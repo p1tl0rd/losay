@@ -14,7 +14,7 @@ namespace LoSay.Application.DTOs
 		public string? Code { get; set; }
 		public void Mapping(Profile profile)
 		{
-			profile.CreateMap<LotState, LotStateDto>().ReverseMap();
+			profile.CreateMap<User, UserDto>().ReverseMap();
 		}
 	}
 }

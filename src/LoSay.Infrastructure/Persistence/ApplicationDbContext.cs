@@ -84,7 +84,7 @@ namespace LoSay.Data.Contexts
 		{
 			//var userId = await _userService.GetUserLogin();
 			var userId = "";
-			var auditLog = new AuditLog();
+			var auditLogs = new List<AuditLog>();
 
 			// ===== 1. Set audit fields + prepare audit =====
 			foreach (var entry in ChangeTracker.Entries())
@@ -116,7 +116,10 @@ namespace LoSay.Data.Contexts
 						Action = entry.State.ToString().ToUpper(),
 						UserId = userId,
 						CreatedDate = DateTimeOffset.UtcNow,
-						PrimaryKey = "" // set sau
+						PrimaryKey = JsonSerializer.Serialize(
+							entry.Properties
+								.Where(p => p.Metadata.IsPrimaryKey())
+								.ToDictionary(p => p.Metadata.Name, p => p.CurrentValue))
 					};
 
 					if (entry.State == EntityState.Modified)
@@ -133,8 +136,7 @@ namespace LoSay.Data.Contexts
 								.ToDictionary(p => p.Metadata.Name, p => p.CurrentValue)
 						);
 					}
-
-					if (entry.State == EntityState.Added)
+					else if (entry.State == EntityState.Added)
 					{
 						audit.NewValues = JsonSerializer.Serialize(
 							entry.Properties.ToDictionary(
@@ -142,28 +144,26 @@ namespace LoSay.Data.Contexts
 								p => p.CurrentValue)
 						);
 					}
+					else if (entry.State == EntityState.Deleted)
+					{
+						audit.OldValues = JsonSerializer.Serialize(
+							entry.Properties.ToDictionary(
+								p => p.Metadata.Name,
+								p => p.OriginalValue)
+						);
+					}
 
-					audit.OldValues = JsonSerializer.Serialize(
-					  entry.Properties.ToDictionary(
-						  p => p.Metadata.Name,
-						  p => p.OriginalValue)
-				  );
-
-					audit.PrimaryKey = JsonSerializer.Serialize(
-					entry.Properties
-						.Where(p => p.Metadata.IsPrimaryKey())
-						.ToDictionary(p => p.Metadata.Name, p => p.CurrentValue));
-					auditLog = audit;
+					auditLogs.Add(audit);
 				}
 			}
 
 			// ===== 2. Save entity =====
 			var result = await base.SaveChangesAsync(cancellationToken);
 
-			// ===== 4. Save audit =====
-			if (auditLog != null && userId != null)
+			// ===== 3. Save audit =====
+			if (auditLogs.Count > 0 && userId != null)
 			{
-				await Set<AuditLog>().AddAsync(auditLog);
+				await Set<AuditLog>().AddRangeAsync(auditLogs);
 				await base.SaveChangesAsync(cancellationToken);
 			}
 

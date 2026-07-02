@@ -14,7 +14,7 @@ namespace LoSay.Infrastructure.Repositories
 		}
 		public async Task<User> CreateUser(User user)
 		{
-			if (GetUserById(user.Id) != null)
+			if (await GetUserById(user.Id) == null)
 			{
 				await _context.Users.AddAsync(user);
 				await _context.SaveChangesAsync();

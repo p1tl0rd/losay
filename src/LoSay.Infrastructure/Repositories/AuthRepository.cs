@@ -63,7 +63,7 @@ namespace LoSay.Infrastructure.Repositories
 			}
 			string symmetricKey = _configuration.GetSection("TokenSettings:Token").Value;
 			var securityKey = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(symmetricKey));
-			var creds = new SigningCredentials(securityKey, SecurityAlgorithms.Aes128CbcHmacSha256);
+			var creds = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
 			var token = new JwtSecurityToken(
 				claims: claims,
