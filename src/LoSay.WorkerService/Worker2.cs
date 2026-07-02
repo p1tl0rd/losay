@@ -52,7 +52,7 @@ public class Worker2 : BackgroundService
 	private async Task RunWorkerLoop(CancellationToken stoppingToken)
 	{
 		//SignalR
-	//	await ConnectSignalR(stoppingToken);
+		await ConnectSignalR(stoppingToken);
 
 		using var timer = new PeriodicTimer(TimeSpan.FromSeconds(int.Parse(_settings.samp)));
 

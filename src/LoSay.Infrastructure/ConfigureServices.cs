@@ -78,7 +78,9 @@ namespace LoSay.Infrastructure
 			services.AddScoped<IPLCDataRepository, PLCDataRepository>();
 			services.AddScoped<IItemRepository, ItemRepository>();
 			services.AddScoped<IItemDetailRepository, ItemDetailRepository>();
-			
+			services.AddScoped<IAuthRepository, AuthRepository>();
+			services.AddScoped<IUserRepository, UserRepository>();
+
 			return services;
 		}
 		public static IServiceCollection AddDomainServices(this IServiceCollection services)
