@@ -1,0 +1,136 @@
+﻿@page "/machines"
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IMachineService MachineService
+@inject Serilog.ILogger Logger
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject NavigationManager Navigation
+
+<MudText Typo="Typo.h4" Class="mb-4">Quản lý Máy</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ShowAddDialog" Class="mb-4">
+    <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-1" />
+    Thêm Máy mới
+</MudButton>
+
+<MudGrid Spacing="3">
+    @if (machines != null)
+    {
+        @foreach (var machine in machines)
+        {
+            <MudItem xs="12" sm="6" md="4" lg="3">
+                <MudCard Elevation="3" Class="d-flex flex-column">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">@machine.MachineName</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudTooltip Text="Chỉnh sửa">
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Warning" Size="Size.Small" OnClick="@(() => ShowEditDialog(machine))" />
+                            </MudTooltip>
+                            <MudTooltip Text="Xóa">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => ConfirmDelete(machine.Id))" />
+                            </MudTooltip>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent Class="flex-grow-1">
+                        <MudText Typo="Typo.body2"><b>Địa Chỉ:</b> @machine.Address</MudText>
+                        <MudText Typo="Typo.body2"><b>Lot Run:</b> @machine.LotRun</MudText>
+                        <MudChip T="string" Color="@(Convert.ToBoolean(machine.Status) == true ? Color.Success : Color.Error)" Class="mt-2">
+                            @((Convert.ToBoolean(machine.Status) == true) ? "Hoạt động" : "Dừng")
+                        </MudChip>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    }
+    else
+    {
+        <MudItem xs="12">
+            <MudProgressCircular Color="Color.Info" Indeterminate="true" />
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    private IEnumerable<MachineDto>? machines;
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authenticationState = await AuthenticationStateTask;
+        var user = authenticationState.User;
+        // Kiểm tra nếu người dùng không được xác thực
+        if (user.Identity == null || !user.Identity.IsAuthenticated)
+        {
+            Navigation.NavigateTo("login", true);
+            return;
+        }
+        await LoadMachines();
+    }
+
+    private async Task LoadMachines()
+    {
+        try
+        {
+            machines = await MachineService.GetAllMachines();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Lỗi tải danh sách máy");
+            Snackbar.Add("Lỗi tải danh sách máy", Severity.Error);
+        }
+    }
+
+    private async Task ShowAddDialog()
+    {
+        var parameters = new DialogParameters { ["MachineDto"] = new MachineDto() };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<MachineEditDialog>("Thêm Máy mới", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await LoadMachines();
+            Snackbar.Add("Thêm máy thành công", Severity.Success);
+        }
+    }
+
+    private async Task ShowEditDialog(MachineDto machineDto)
+    {
+        var parameters = new DialogParameters { ["MachineDto"] = machineDto };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<MachineEditDialog>("Sửa Máy", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await LoadMachines();
+            Snackbar.Add("Cập nhật máy thành công", Severity.Success);
+        }
+    }
+
+    private async Task ConfirmDelete(int id)
+    {
+        bool? result = await DialogService.ShowMessageBox(
+            "Xác nhận",
+            $"Bạn có chắc chắn muốn xóa máy Id {id}?",
+            yesText: "Xóa", cancelText: "Hủy");
+
+        if (result == true)
+        {
+            try
+            {
+                await MachineService.DeleteMachineAsync(id);
+                await LoadMachines();
+                Snackbar.Add("Xóa máy thành công", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add("Lỗi khi xóa máy", Severity.Error);
+            }
+        }
+    }
+}

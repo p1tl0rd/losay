@@ -1,0 +1,630 @@
+@page "/Chart"
+@page "/Chart/{machineId:int}/{lotNo}"
+@inject IJSRuntime JSRuntime
+@inject IPLCService PlcService
+@inject IItemService ItemService
+@inject IPrinter Printer
+
+@using LoSay.Data.Repositories.Interfaces
+@using LoSay.Servies.Interfaces
+@using OxyPlot.Blazor
+@using OxyPlot
+@using OxyPlot.Series
+@using OxyPlot.Axes
+@using OxyPlot.Annotations
+@using OxyPlot.Legends
+@using OxyPlot.SkiaSharp
+
+@if (_loading == true)
+{
+	<MudProgressCircular Color="Color.Info" Indeterminate="true" />
+}
+else
+{
+	@* <div>
+		<MudSelect T="string" Label="Ch?n Printer"
+				   @bind-Value="SelectedPrinter"
+				   Dense="true"
+				   Items="@itemDetails">
+			<MudSelectItem T="string" Value="@null">-- Ch?n Printer --</MudSelectItem>
+			@foreach (var detail in Printers)
+			{
+				<MudSelectItem T="string" Value="@detail">@detail</MudSelectItem>
+			}
+		</MudSelect>
+	</div>
+	@if (!string.IsNullOrEmpty(Message))
+	{
+		<p>@Message</p>
+	} *@
+
+	<MudGrid>
+		<MudItem xs="2" sm="2">
+			<MudButton OnClick="PrintChart" Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Print" Class="mt-4">
+				In Bi?u d?
+			</MudButton>
+			<div Style="width: fit-content">
+				<MudSelect T="Item" Label="Ch?n Item" Value="selectedItem" ValueChanged="OnSelectedItemChanged" ValueExpression="() => selectedItem" Clearable="true" Dense=true>
+					<MudSelectItem T="Item" Value="null">-- Ch?n Item --</MudSelectItem>
+					@foreach (var item in items)
+					{
+						<MudSelectItem T="Item" Value="@item">@item.ItemName (@item.ItemCode)</MudSelectItem>
+					}
+				</MudSelect>
+
+
+				@if (selectedItem != null)
+				{
+					<MudSelect T="ItemDetail" Label="Ch?n Class"
+							   Value="selectedItemDetail"
+							   ValueChanged="OnSelectedItemDetailChanged"
+							   Dense="true"
+							   Items="@itemDetails">
+						<MudSelectItem T="ItemDetail" Value="@null">-- Ch?n Class --</MudSelectItem>
+						@foreach (var detail in itemDetails)
+						{
+							<MudSelectItem T="ItemDetail" Value="@detail">@detail.ClassName</MudSelectItem>
+						}
+					</MudSelect>
+				}
+				<table id="tableInfoId">
+					<tr><td>LotNo:</td><td>@lotNo</td></tr>
+					@if (selectedItemDetail != null)
+					{
+						<tr><td>Temperature:</td><td>@selectedItemDetail?.Temperature ?</td></tr>
+						<tr><td>Time Drying:</td><td>@selectedItemDetail?.TimeDrying ?</td></tr>
+					}
+					<tr><td>Data count:</td><td>@countData</td></tr>
+					<tr><td>Sampling int:</td><td>@sampling sec</td></tr>
+					<tr><td>Start Time:</td><td>@startTime</td></tr>
+					<tr><td>Stop Time:</td><td>@stopTime</td></tr>
+				</table>
+			</div>
+		</MudItem>
+		<MudItem xs="10" sm="10">
+			<div @ref="plotContainer" style="width: 100%; height: 80vh;" id="lotDataChart">
+				<BlazorPlotView Width="100%" Height="100%" Model="plotModel" />
+			</div>
+		</MudItem>
+	</MudGrid>
+
+
+}
+
+
+@code {
+	private PlotModel plotModel;
+	[Parameter] public int machineId { get; set; }
+	[Parameter] public string lotNo { get; set; }
+	private bool _loading = false;
+	private ElementReference plotContainer;
+	private bool firstRender = true; // Khai báo ? c?p d? class
+
+	// Item and ItemDetail properties
+	private List<Item> items = new List<Item>();
+	private Item? selectedItem;
+	private List<ItemDetail> itemDetails = new List<ItemDetail>();
+	private ItemDetail? selectedItemDetail;
+
+	// Data properties
+	private string lotDataChart; // Add this
+	int countData = 0;
+	double sampling = 0;
+	DateTime? startTime { get; set; } = new DateTime();
+	DateTime? stopTime { get; set; } = new DateTime();
+	double temperature = 0;
+	double timeDrying = 0;
+
+	// Printer
+	private List<string> Printers = new List<string>();
+	private string SelectedPrinter;
+	private string Message;
+
+
+	// T?i d? li?u ban d?u khi trang du?c kh?i t?o
+	protected override async Task OnInitializedAsync()
+	{
+		_loading = true;
+		StateHasChanged();
+
+		// Load initial data (e.g., Items)
+		items = await ItemService.GetItemsAsync();
+
+		await LoadData();
+		//	await LoadPrinter();
+
+		_loading = false;
+		StateHasChanged();
+	}
+
+
+	#region	code new
+	private async Task LoadData()
+	{
+		if (machineId > 0 && !string.IsNullOrEmpty(lotNo))
+		{
+			var plcDataList = await PlcService.GetPlcDataForLotReportAsync(machineId, lotNo);
+			countData = plcDataList.Count();
+
+			if (plcDataList != null && plcDataList.Any())
+			{
+				startTime = plcDataList.First().Timestamp;
+				stopTime = plcDataList.Last().Timestamp;
+
+				plotModel = new PlotModel
+				{
+					Title = "Bi?u d? d? li?u",
+					PlotMargins = new OxyThickness(40, 40, 40, 40),
+				};
+
+
+				plotModel.Series.Clear();
+				plotModel.Axes.Clear();
+				plotModel.Annotations.Clear();
+
+				SetupLegend();
+				AddSeries(plcDataList);
+				ConfigureAxes();
+
+				StateHasChanged();
+			}
+		}
+	}
+
+	private async Task OnSelectedItemChanged(Item? item)
+	{
+		selectedItem = item;
+		selectedItemDetail = null; // Reset selected ItemDetail when Item changes
+		if (selectedItem != null)
+		{
+			itemDetails = await ItemService.GetItemDetailsByItemIdAsync(selectedItem.Id);
+		}
+		else
+		{
+			itemDetails.Clear();
+		}
+		StateHasChanged();
+	}
+	private async Task OnSelectedItemDetailChanged(ItemDetail? newValue)
+	{
+		selectedItemDetail = newValue;
+		AddAnnotations();
+		await InvokeAsync(StateHasChanged); // C?p nh?t UI n?u c?n
+	}
+
+	private void SetupLegend()
+	{
+		var legend = new Legend
+		{
+			LegendBackground = OxyColor.FromArgb(200, 255, 255, 255),
+			LegendBorder = OxyColors.Black,
+			LegendPlacement = LegendPlacement.Outside
+		};
+		plotModel.Legends.Add(legend);
+	}
+
+	private void AddSeries(List<PLCData> plcDataList)
+	{
+		var series1 = CreateLineSeries("CH 1", OxyColors.White);
+		var series2 = CreateLineSeries("CH 2", OxyColors.Red);
+		var series3 = CreateLineSeries("CH 3", OxyColors.Green);
+
+		foreach (var data in plcDataList)
+		{
+			if (data.Timestamp.HasValue && data.Value1.HasValue)
+				series1.Points.Add(new DataPoint(DateTimeAxis.ToDouble(data.Timestamp.Value), data.Value1.Value));
+
+			if (data.Timestamp.HasValue && data.Value2.HasValue)
+				series2.Points.Add(new DataPoint(DateTimeAxis.ToDouble(data.Timestamp.Value), data.Value2.Value));
+
+			if (data.Timestamp.HasValue && data.Value3.HasValue)
+				series3.Points.Add(new DataPoint(DateTimeAxis.ToDouble(data.Timestamp.Value), data.Value3.Value));
+
+			if (countData > 1 && sampling == 0)
+			{
+				var samplingInterval = plcDataList.ElementAt(1).Timestamp.Value - plcDataList.First().Timestamp.Value;
+				sampling = Math.Round(samplingInterval.TotalSeconds);
+			}
+		}
+
+		plotModel.Series.Add(series1);
+		plotModel.Series.Add(series2);
+		plotModel.Series.Add(series3);
+	}
+
+	private LineSeries CreateLineSeries(string title, OxyColor color)
+	{
+		return new LineSeries
+		{
+			Title = title,
+			StrokeThickness = 2,
+			MarkerSize = 4,
+			MarkerStroke = OxyColors.White,
+
+		};
+	}
+
+	private void ConfigureAxes()
+	{
+		var dateTimeAxis = new DateTimeAxis
+		{
+			Position = AxisPosition.Bottom,
+			StringFormat = "HH:mm:ss",
+			MajorGridlineStyle = LineStyle.Solid,
+			MinorGridlineStyle = LineStyle.Dash,
+			IntervalType = DateTimeIntervalType.Minutes,
+			// MajorStep = 0.005,
+			// MinorStep = 0.00025,
+			Title = "Absolute Time[h:m:s]",
+			MaximumPadding = 0.05,
+			MinimumPadding = 0.05
+		};
+
+		var linearAxis = new LinearAxis
+		{
+			Position = AxisPosition.Left,
+			MajorGridlineStyle = LineStyle.Solid,
+			MinorGridlineStyle = LineStyle.Dash,
+			// MajorStep = 20,
+			// MinorStep = 4,
+			MaximumPadding = 0.2,
+			MinimumPadding = 0.2
+		};
+
+		plotModel.Axes.Add(dateTimeAxis);
+		plotModel.Axes.Add(linearAxis);
+	}
+
+	private (LineSeries MaxSeries, double MaxValue, LineSeries MinSeries, double MinValue) FindMaxMinSeries()
+	{
+		if (plotModel?.Series == null || !plotModel.Series.Any())
+		{
+			return (null, double.NaN, null, double.NaN); // Tr? v? giá tr? m?c d?nh n?u không có series
+		}
+
+		LineSeries maxSeries = null;
+		double maxValue = double.MinValue;
+		LineSeries minSeries = null;
+		double minValue = double.MaxValue;
+
+		foreach (var series in plotModel.Series.OfType<LineSeries>())
+		{
+			if (series.Points != null && series.Points.Any())
+			{
+				double currentMax = series.Points.Max(p => p.Y);
+				double currentMin = series.Points.Min(p => p.Y);
+
+				if (currentMax > maxValue)
+				{
+					maxValue = currentMax;
+					maxSeries = series;
+				}
+
+				if (currentMin < minValue)
+				{
+					minValue = currentMin;
+					minSeries = series;
+				}
+			}
+		}
+
+		return (maxSeries, maxValue, minSeries, minValue);
+	}
+	private (DataPoint? minPoint, double minValue) FindMinPointInRange(double xStart, double xEnd)
+	{
+		DataPoint? globalMinPoint = null;
+		double globalMinValue = double.MaxValue;
+
+		// Gi? s? có 3 series d?u là series line b?n mu?n ki?m tra
+		for (int i = 0; i < 3; i++)
+		{
+			if (plotModel.Series[i] is LineSeries series)
+			{
+				var pointsInRange = series.Points.Where(p => p.X >= xStart && p.X <= xEnd);
+
+				if (pointsInRange.Any())
+				{
+					var localMinPoint = pointsInRange.OrderBy(p => p.Y).First();
+					if (localMinPoint.Y < globalMinValue)
+					{
+						globalMinValue = localMinPoint.Y;
+						globalMinPoint = localMinPoint;
+					}
+				}
+			}
+		}
+
+		return (globalMinPoint, globalMinValue);
+	}
+
+
+	private void AddAnnotations()
+	{
+		// Tim max, min
+		var (maxSeries, maxValue, minSeries, minValue) = FindMaxMinSeries();
+		DataPoint startPoint = new DataPoint();
+		DataPoint lastPointData = new DataPoint();
+
+
+		var series1 = plotModel.Series[2] as LineSeries;
+
+		// Thêm PointAnnotation d?a trên nhi?t d?
+		var thresholdTemperature = selectedItemDetail?.Temperature;
+		if (thresholdTemperature == null) return;
+		foreach (var point in maxSeries.Points)
+		{
+			if (point.Y >= thresholdTemperature)
+			{
+
+				// Chuy?n d?i th?i gian s?y t? phút sang don v? tr?c X (ngày)
+				double dryingTimeDays = TimeSpan.FromMinutes(Convert.ToDouble(selectedItemDetail?.TimeDrying)).TotalDays;
+
+				//	startPoint = point;
+				//	var findPoint = startPoint.X + dryingTimeDays;
+				//	lastPointData = maxSeries.Points.Where(p => p.X >= findPoint).OrderBy(p => p.X - findPoint).FirstOrDefault();
+
+				// update 03.Jul.25
+				// l?y giá tr? cu?i cùng làm lastpoint.
+				lastPointData = maxSeries.Points.LastOrDefault();
+				var findPoint = lastPointData.X - dryingTimeDays;
+				startPoint = maxSeries.Points.Where(p => p.X <= findPoint).LastOrDefault();
+
+				AddPointAnnotation(startPoint.X, startPoint.Y, MarkerType.Star);//StartPoint
+				AddPointAnnotation(lastPointData.X, lastPointData.Y, MarkerType.Star);//LastPoint
+				break;
+			}
+		}
+		// Sau khi xác d?nh startPoint và lastPointData
+		var (minPoint, _minValue) = FindMinPointInRange(startPoint.X, lastPointData.X);
+		if (minPoint != null)
+		{
+			// Ví d? thêm di?m dánh d?u min
+			AddPointAnnotation(minPoint.Value.X, minPoint.Value.Y, MarkerType.Triangle);
+
+			// Ho?c thêm text annotation hi?n th? giá tr? min
+			plotModel.Annotations.Add(new TextAnnotation
+			{
+				Text = $"? - Min: {_minValue:F2} ?",
+				TextPosition = new DataPoint(minPoint.Value.X, minPoint.Value.Y - 15),
+				Stroke = OxyColors.Transparent,
+				TextColor = OxyColors.Black,
+			});
+		}
+
+		var firstPoint = series1.Points.First();
+		var lastPoint = series1.Points.Last();
+
+		var maxYValue = maxSeries.Points.Max(p => p.Y);
+		var maxYPoint = maxSeries.Points.First(p => p.Y == maxYValue);
+
+		AddVerticalLineAnnotation(startPoint);// b?t d?u d? nhi?t
+		AddVerticalLineAnnotation(lastPointData);//K?t thúc th?i gian s?y.
+
+		AddTimeTextAnnotaion(firstPoint, startPoint, "Th?i gian lên nhi?t: ");// Text th?i gian lên nhi?t.
+		AddTimeTextAnnotaion(startPoint, lastPointData, "Th?i gian duy trì nhi?t d?: ");// Text th?i gian duy trì nhi?t d?.
+
+		AddVerticalLineAnnotation(firstPoint.X);
+		AddVerticalLineAnnotation(lastPoint.X);
+		AddHorizontalLineAnnotation(maxYPoint.Y);
+		AddArrowAnnotations(firstPoint.X, lastPoint.X, maxYPoint);
+		AddDistanceAnnotation(maxYPoint.X, maxYPoint.Y, maxYValue);//Add text max
+		AddPointAnnotation(maxYPoint.X, maxYPoint.Y, MarkerType.Circle);//Add logo max
+
+	}
+
+	//In th?i gian các kho?ng lên chart
+	private void AddTimeTextAnnotaion(DataPoint startPoint, DataPoint finishPoint, string? text)
+	{
+		// Hi?u s? ngày gi?a startPoint và firstPoint
+		double daysDiff = startPoint.X - finishPoint.X;
+
+		// Chuy?n sang TimeSpan (s? ngày sang TimeSpan)
+		TimeSpan timeDiff = TimeSpan.FromDays(daysDiff);
+
+		// T?o chu?i hi?n th? (ví d?: "2h 30m 15s")
+		string timeDisplay = $"{(int)timeDiff.TotalHours}h {timeDiff.Minutes}m {timeDiff.Seconds}s";
+
+		// Thêm TextAnnotation lên plot (v? trí b?n mu?n, ví d? trên tr?c X t?i startPoint.X)
+		// Tính trung di?m tr?c X gi?a firstPoint và startPoint
+		double midX = (startPoint.X + finishPoint.X) / 2;
+		var textAnnotation = new TextAnnotation
+		{
+			Text = $"{text} {timeDisplay}",
+			TextPosition = new DataPoint(midX, finishPoint.Y + 10),
+			FontSize = 12,
+			Stroke = OxyColors.Transparent, // không vi?n h?p
+			TextColor = OxyColors.Black,
+			TextHorizontalAlignment = OxyPlot.HorizontalAlignment.Center,
+			TextVerticalAlignment = VerticalAlignment.Top
+		};
+
+		plotModel.Annotations.Add(textAnnotation);
+
+	}
+
+	private void AddVerticalLineAnnotation(DataPoint point) // line di qua start point và finish point.
+	{
+		var annotation = new LineAnnotation
+		{
+			Type = LineAnnotationType.Vertical,
+			X = point.X,
+			MaximumY = point.Y + 10,
+			MinimumY = point.Y - 10,
+			Color = OxyColors.Blue,
+			BorderPadding = new OxyThickness(5, 5, 5, 5),
+			BorderBackground = OxyColor.FromArgb(191, 255, 255, 255),
+		};
+		plotModel.Annotations.Add(annotation);
+
+
+	}
+
+	private void AddVerticalLineAnnotation(double x)
+	{
+		var annotation = new LineAnnotation
+		{
+			Type = LineAnnotationType.Vertical,
+			X = x,
+			Color = OxyColors.Blue,
+			BorderPadding = new OxyThickness(5, 5, 5, 5),
+			BorderBackground = OxyColor.FromArgb(191, 255, 255, 255),
+		};
+		plotModel.Annotations.Add(annotation);
+
+	}
+
+	private void AddHorizontalLineAnnotation(double y)
+	{
+		var annotation = new LineAnnotation
+		{
+			Type = LineAnnotationType.Horizontal,
+			Y = y,
+			Color = OxyColors.Blue,
+			StrokeThickness = 1
+		};
+		plotModel.Annotations.Add(annotation);
+	}
+
+	private void AddArrowAnnotations(double x, double x2, DataPoint point)
+	{
+		var arrowAnnotation1 = new ArrowAnnotation
+		{
+			Color = OxyColors.Blue,
+			StartPoint = new DataPoint(point.X, point.Y),
+			EndPoint = new DataPoint(x, point.Y),
+			LineStyle = LineStyle.Dot,
+			StrokeThickness = 1
+		};
+		plotModel.Annotations.Add(arrowAnnotation1);
+
+		var arrowAnnotation2 = new ArrowAnnotation
+		{
+			Color = OxyColors.Blue,
+			StartPoint = new DataPoint(point.X, point.Y),
+			EndPoint = new DataPoint(x2, point.Y),
+			LineStyle = LineStyle.Dot,
+			StrokeThickness = 1
+		};
+		plotModel.Annotations.Add(arrowAnnotation2);
+	}
+
+	private void AddDistanceAnnotation(double x, double y, double distance)
+	{
+		var distanceAnnotation = new TextAnnotation
+		{
+			Text = $"Max: {distance} ?",
+			TextColor = OxyColors.Black,
+			FontSize = 12,
+			Stroke = OxyColors.Transparent,
+			TextPosition = new DataPoint(x, y - 15),
+			TextVerticalAlignment = VerticalAlignment.Bottom,
+			TextHorizontalAlignment = OxyPlot.HorizontalAlignment.Left
+		};
+		plotModel.Annotations.Add(distanceAnnotation);
+	}
+	private void AddPointAnnotation(double x, double y, MarkerType type)
+	{
+		var pointAnnotation = new PointAnnotation()
+		{
+			X = x,
+			Y = y,
+			Shape = type,
+			Stroke = OxyColors.Blue,
+			StrokeThickness = 1,
+			Size = 6,
+		};
+		plotModel.Annotations.Add(pointAnnotation);
+
+	}
+
+	// Print chart functionality
+	private void AddSubtitle(PlotModel plot)
+	{
+		plot.Subtitle = $"LotNo: {lotNo}\n Temperature: {selectedItemDetail?.Temperature} \n Time Drying: {selectedItemDetail?.TimeDrying} \nData count: {countData}  \nSampling int: {sampling} \nStart Time: {startTime} \nStop Time: {stopTime}";
+	}
+	private async Task PrintChart()
+	{
+		//	await JSRuntime.InvokeVoidAsync("printChartElement", plotContainer);
+		PlotModel plotModel1 = plotModel;
+		AddSubtitle(plotModel1);
+		string _lotno = $"{lotNo}.pdf";
+		var _filePath = await ExportPlotToPdfInWwwroot(plotModel1, _lotno);
+		await DownloadFile(_filePath);
+		//	await PrintFile(_filePath, SelectedPrinter);
+
+	}
+
+	public async Task<string> ExportPlotToPdfInWwwroot(IPlotModel model, string fileName = "chart.pdf", int width = 800, int height = 600)
+	{
+		var wwwrootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "files");
+		if (!Directory.Exists(wwwrootPath))
+			Directory.CreateDirectory(wwwrootPath);
+
+		var filePath = Path.Combine(wwwrootPath, fileName);
+
+		using var stream = File.OpenWrite(filePath);
+		//		var pdfExporter = new OxyPlot.SkiaSharp.PdfExporter { Width = width, Height = height };
+		var pdfExporter = new OxyPlot.SkiaSharp.PdfExporter
+		{
+			Width = 595,  // A4 width in points
+			Height = 700,  // A4 height in points,
+		};
+		pdfExporter.Export(model, stream);
+
+		// ? Tr? v? du?ng d?n truy c?p du?c t? trình duy?t
+		return $"/files/{fileName}";
+	}
+	// Tr? v? du?ng d?n URL cho client truy c?p, không ph?i du?ng d?n file h? th?ng
+	private string GetFileUrl(string fileName)
+	{
+		return $"files/{fileName}";  // Ví d?: /files/lot123.pdf
+	}
+
+	// G?i hàm này khi mu?n client t?i file
+	private async Task DownloadFile(string fileName)
+	{
+		await JSRuntime.InvokeVoidAsync("open", fileName, "_blank");
+	}
+
+
+	// Code xu ly may in
+	private async Task LoadPrinter()
+	{
+		// L?y danh sách máy in
+		Printers = await Printer.GetInstalledPrinters();
+
+		// Ch?n máy in d?u tiên làm m?c d?nh
+		if (Printers.Any())
+		{
+			SelectedPrinter = Printers.FirstOrDefault();
+		}
+	}
+
+	private async Task PrintFile(string path, string printerName)
+	{
+		if (string.IsNullOrEmpty(SelectedPrinter))
+		{
+			Message = "Please select a printer.";
+			return;
+		}
+
+		try
+		{
+			// In file t? wwwroot
+			Message = "Printing...";
+			StateHasChanged();
+			await Printer.PrintPng(path, SelectedPrinter);
+			//    ExcelPrinter.PrintExcel("F-3006 V6.04 PTCA GW IVR GW Production record_ASSY process-ok.xlsx", SelectedPrinter);
+			Message = "Printing userImprovement.xlsx...";
+		}
+		catch (Exception ex)
+		{
+			Message = $"Error: {ex.Message}";
+		}
+	}
+	#endregion
+
+
+}
+
+

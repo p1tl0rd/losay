@@ -1,0 +1,69 @@
+@using LoSay.Data.Entities
+@inject IItemService ItemService
+@inject IDialogService DialogService
+@using LoSay.Servies.Interfaces
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        <EditForm Model="Item" OnValidSubmit="Save">
+            <MudGrid Spacing="2">
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Item.ItemCode" Label="Mã Item" Required RequiredError="Mã Item là b?t bu?c" MaxLength="50" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Item.ItemName" Label="Tên Item" Required RequiredError="Tên Item là b?t bu?c" MaxLength="50" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Item.Max" Label="Max Value" Required RequiredError="Max Value là b?t bu?c" Variant="Variant.Outlined" InputType="InputType.Number" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Item.Min" Label="Min Value" Required RequiredError="Min Value là b?t bu?c" Variant="Variant.Outlined" InputType="InputType.Number" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Item.TimeSamping" Label="Time Sampling (giây)" Required RequiredError="Time Sampling là b?t bu?c" Variant="Variant.Outlined" InputType="InputType.Number" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudCheckBox @bind-Checked="Item.Status" T="bool?" Label="Tr?ng thái ho?t d?ng" Color="Color.Primary" />
+                </MudItem>
+            </MudGrid>
+            <DataAnnotationsValidator />
+        </EditForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">H?y</MudButton>
+        <MudButton Color="Color.Primary" OnClick="HandleSubmit">Luu</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public Item Item { get; set; } = new Item();
+
+    private async Task Save()
+    {
+        if (Item.Id == 0)
+        {
+            await ItemService.AddItemAsync(Item);
+        }
+        else
+        {
+            await ItemService.UpdateItemAsync(Item);
+        }
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private async Task HandleSubmit()
+    {
+        // MudForm không có Validate() khi dùng EditForm, ValidationMessage s? t? hi?n th?
+        await Save();
+    }
+}

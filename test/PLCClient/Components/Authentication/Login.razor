@@ -1,0 +1,212 @@
+﻿@page "/login"
+@using LoSay.Application.DTOs.Auth
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@using global::PLCClient.Components.Layout
+@using global::PLCClient.Providers
+
+
+@layout LoginLayout
+@inject IAuthService AuthService
+@inject Providers.TokenAuthenticationStateProvider TokenAuthenticationStateProvider
+@inject NavigationManager NavigationManager
+
+
+
+<MudForm @ref="form" @bind-IsValid="@success" @bind-Errors="@errors" @onkeydown="@EnterKey">
+	<MudText Typo="Typo.h5" GutterBottom="true" Class="mt-4">Drying Machine Polymer</MudText>
+	@if (showErrorAlert == true)
+	{
+		<MudText Typo="Typo.body2" GutterBottom="true" Color=Color.Error Class="mt-4">Invalid username or password</MudText>
+	}
+
+	<MudTextField T="string" @bind-Value="@Code" Required="true" Label="Code ID" Variant="Variant.Outlined" Class="my-6"></MudTextField>
+
+	<MudTextField @bind-Value="@Password" Label="Password " Required="true" Variant="Variant.Outlined" InputType="@PasswordInput" Adornment="Adornment.End" AdornmentIcon="@PasswordInputIcon" OnAdornmentClick="TogglePasswordVisibility" />
+
+	<div Class="d-flex justify-space-between align-center">
+		<MudCheckBox T="bool" Label="Remember me?" @bind-Checked="RememberMe" Color="Color.Primary" Class="ml-n1 my-3"></MudCheckBox>
+		<MudSpacer />
+		<br />
+		<br />
+		<MudLink Href="/pages/authentication/forgot-password">Forgot pwd?</MudLink>
+	</div>
+
+	@if (isLoading)
+	{
+		<MudProgressCircular Color="Color.Default" Indeterminate="true" />
+	}
+	else
+	{
+		<MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!success && !isBusy)" Size="Size.Large" FullWidth="true" OnClick="() => HandleSubmit()">
+			Sign In
+		</MudButton>
+	}
+
+
+
+</MudForm>
+
+@code {
+	private bool showCallAlert = false;
+	private bool showErrorAlert = false;
+	private bool isGuest = default;
+
+	string Password { get; set; } = default;
+	string Code { get; set; }
+	string Email { get; set; }
+	bool RememberMe { get; set; } = default;
+	bool isBusy = default;
+	bool isLoading = false;
+
+	LoginModel model = new LoginModel();
+	bool success;
+	string[] errors = { };
+
+	MudTextField<string> pwField1;
+	MudForm form;
+
+	string _returnURL = "";
+	private bool _initialized;
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (!firstRender || _initialized)
+			return;
+
+		_initialized = true;
+
+		var state = await TokenAuthenticationStateProvider.GetAuthenticationStateAsync();
+		var user = state.User;
+
+		if (user.Identity?.IsAuthenticated == true)
+		{
+			NavigationManager.NavigateTo("/");
+		}
+
+		var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+		if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("returnUrl", out var url))
+		{
+			_returnURL = url.First();
+		}
+
+		StateHasChanged();
+	}
+
+
+	private async Task HandleGuest()
+	{
+		isBusy = false;
+		success = false;
+		isGuest = true;
+
+		model = new LoginModel
+		{
+			Code = "6156",
+			//   Email = "cisse@yahoo.com",
+			Password = "11111",
+			RememberMe = true
+		};
+		await DangNhap(model);
+	}
+	private async Task HandleSubmit()
+	{
+		isLoading = true;
+
+		model = new LoginModel
+		{
+			Code = Code,
+			Password = Password,
+			RememberMe = RememberMe
+		};
+		await DangNhap(model);
+		isLoading = false;
+	}
+	private async Task EnterKey(KeyboardEventArgs e)
+	{
+		if (e.Code == "Enter" || e.Code == "NumpadEnter")
+		{
+			model = new LoginModel
+			{
+				Code = Code,
+				Password = Password,
+				RememberMe = RememberMe
+			};
+			await DangNhap(model);
+		}
+	}
+	private async Task OnValidSubmit(EditContext context)
+	{
+		UserAuthDto user = new UserAuthDto()
+		{
+			Code = Code,
+			Password = Password
+		};
+
+
+		var response = await AuthService.LoginAsync(user);
+		if (response != null)
+		{
+			// await TokenAuthenticationStateProvider.Login(response);
+			// NavigationManager.NavigateTo(_returnURL);
+		}
+		else
+		{
+			showErrorAlert = true;
+		}
+
+	}
+	bool PasswordVisibility;
+	InputType PasswordInput = InputType.Password;
+	string PasswordInputIcon = Icons.Material.Filled.VisibilityOff;
+
+	void TogglePasswordVisibility()
+	{
+		@if (PasswordVisibility)
+		{
+			PasswordVisibility = false;
+			PasswordInputIcon = Icons.Material.Filled.VisibilityOff;
+			PasswordInput = InputType.Password;
+		}
+		else
+		{
+			PasswordVisibility = true;
+			PasswordInputIcon = Icons.Material.Filled.Visibility;
+			PasswordInput = InputType.Text;
+		}
+	}
+
+	private void CloseMe(bool value)
+	{
+		if (value)
+		{
+			showErrorAlert = false;
+		}
+		else
+		{
+			showCallAlert = false;
+		}
+	}
+	private async Task DangNhap(LoginModel model)
+	{
+		isBusy = false;
+		success = false;
+		UserAuthDto user = new UserAuthDto()
+		{
+			Code = model.Code,
+			Password = model.Password
+		};
+
+		var result = await AuthService.LoginAsync(user);
+		if (result != null)
+		{
+			await TokenAuthenticationStateProvider.Login(result);
+			NavigationManager.NavigateTo(string.IsNullOrEmpty(_returnURL) ? "/" : _returnURL);
+		}
+		else
+		{
+			Console.WriteLine("Invalid username or password");
+			showErrorAlert = true;
+		}
+	}
+}

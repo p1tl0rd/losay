@@ -1,0 +1,68 @@
+@using MudBlazor
+@inject LoSay.Servies.Interfaces.IMachineService MachineService
+@inject ISnackbar Snackbar
+@inject ILogger<MachineEditDialog> Logger
+@inject IDialogService DialogService
+
+@using LoSay.Components.Pages
+
+<MudDialog>
+    <DialogContent>
+        <EditForm Model="Machine" OnValidSubmit="Save">
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Machine.MachineName" Label="Tên Máy" Required RequiredError="Tên máy là b?t bu?c" MaxLength="10" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Machine.Address" Label="Ð?a Ch? PLC" MaxLength="20" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox @bind-Value="Machine.Status" Color="Color.Success" Label="Tr?ng thái ho?t d?ng"></MudCheckBox>
+                </MudItem>
+            </MudGrid>
+            <DataAnnotationsValidator />
+        </EditForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">H?y</MudButton>
+        <MudButton Color="Color.Primary" OnClick="HandleSubmit" >Luu</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter]
+    public Machine Machine { get; set; } = new();
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+    private string ButtonText => Machine.Id == 0 ? "Thêm" : "Luu";
+    private bool isValid;
+    private async Task Save()
+    {
+        try
+        {
+            if (Machine.Id == 0)
+            {
+                await MachineService.AddMachineAsync(Machine);
+            }
+            else
+            {
+                await MachineService.UpdateMachineAsync(Machine);
+            }
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "L?i luu máy");
+            Snackbar.Add("L?i khi luu máy", Severity.Error);
+        }
+    }
+
+    private async Task Cancel()
+    {
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+    private async Task HandleSubmit()
+    {
+        await Save();
+    }
+}

@@ -1,0 +1,295 @@
+﻿@page "/MachineDetail/{machineName}"
+
+@inject NavigationManager NavigationManager
+@inject ISnackbar snackbar
+@inject IPLCService plcService
+@inject ILotStateService ILotStateService
+
+@using OxyPlot
+@using OxyPlot.Series
+@using OxyPlot.Axes
+@using OxyPlot.Blazor
+
+<style>
+	.pa-4 {
+		padding: 16px;
+	}
+
+	.my-2 {
+		margin-top: 8px;
+		margin-bottom: 8px;
+	}
+</style>
+<MudContainer>
+	<MudText Typo="Typo.h4" GutterBottom="true">PLC Monitor - @machineName</MudText>
+
+	<MudGrid Spacing="4">
+		<MudItem xs="12" md="6">
+			<MudPaper Elevation="3" Class="pa-4">
+				<MudText Typo="Typo.h6" GutterBottom="true">Lot Control</MudText>
+				<MudDivider Class="my-2" />
+				<MudTextField @bind-Value="lotNo"
+							  Label="Enter Lot No"
+							  Variant="Variant.Outlined"
+							  Adornment="Adornment.Start"
+							  AdornmentIcon="@Icons.Material.Filled.Numbers"
+							  Immediate="true"
+							  Disabled="@isLotRunning" />
+
+				@if (isSaving == false)
+				{
+						<MudButton Color="Color.Primary" OnClick="Save"  Variant="Variant.Filled" 
+				StartIcon="@Icons.Material.Filled.PlayArrow" Disabled="string.IsNullOrEmpty(lotNo)" 
+				 Class="mr-2">Save</MudButton>
+				}
+				else
+				{
+					<MudProgressCircular Color="Color.Default" Indeterminate="true" />
+				}
+			
+
+				@* <MudButton Color="Color.Error" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Stop" Disabled="!isLotRunning">Finish Lot</MudButton> *@
+
+				@if (!string.IsNullOrEmpty(lotNo))
+				{
+					<MudText Class="mt-2"><b>Current Lot:</b> @lotNo</MudText>
+					<MudText Class="mt-2"><b>Start Time:</b> @(startTime.HasValue? startTime.Value.ToString("yyyy-MM-dd HH:mm:ss") : "N/A")</MudText>
+					<MudText Class="mt-2"><b>Time Elapsed:</b> @GetElapsedTime(startTime)</MudText>
+				}
+			</MudPaper>
+		</MudItem>
+
+		<MudItem xs="12" md="6">
+			<MudPaper Elevation="3" Class="pa-4">
+				<MudText Typo="Typo.h6" GutterBottom="true">PLC Data</MudText>
+				@if (pLCDataDto != null)
+				{
+					 <MudDivider Class="my-2" />
+
+					<MudText><b>CH 1:</b> @pLCDataDto.Value1</MudText>
+					<MudText><b>CH 2:</b> @pLCDataDto.Value2</MudText>
+					<MudText><b>CH 3:</b> @pLCDataDto.Value3</MudText>
+					<MudText><b>Status:</b> @(pLCDataDto.Value4 < 1374 ? "ON": "OFF") </MudText>
+				}
+				else
+				{
+					<MudAlert Severity="Severity.Warning">Đang chờ dữ liệu...</MudAlert>
+				}
+
+			</MudPaper>
+		</MudItem>
+
+
+		<MudItem xs="12">
+			@if (isConnected)
+			{
+				<MudPaper Elevation="3" Class="pa-4">
+					<MudText Typo="Typo.h6" GutterBottom="true">Real-time Data</MudText>
+					<MudDivider Class="my-2" />
+					<BlazorPlotView Width="100%" Height="400px" Model="plotModel" />
+				</MudPaper>
+			}
+			else
+			{
+				<MudAlert Severity="Severity.Warning">
+					Connecting to PLC...
+				</MudAlert>
+			}
+		</MudItem>
+
+
+	</MudGrid>
+</MudContainer>
+
+@code {
+	[Parameter] public string machineName { get; set; }
+	[Parameter] [SupplyParameterFromQuery] public int id { get; set; }
+
+	private List<PLCDataDto> plcDataDtos = new List<PLCDataDto>();
+	private PLCDataDto? pLCDataDto;
+
+	private HubConnection? hubConnection;
+	private bool isConnected = false;
+
+	private string lotNo = "";
+	private string inputLotNo = "";
+	private bool isLotRunning = false;
+	private string running = "OFF";
+	private DateTime? startTime;  
+
+	// Chart
+	private PlotModel plotModel;
+	private const int MaxHistoricalPoints = 1400;
+	private readonly TimeSpan DisplayTimeSpan = TimeSpan.FromHours(2);
+
+	// http://localhost:5000/MachineDetail/EB1-2738?id=1
+	protected override async Task OnInitializedAsync()
+	{
+		await InitSignalR();
+		await InitializePlotModel();
+		await LoadHistoricalData(TimeSpan.FromHours(3));
+	}
+
+	private async Task InitSignalR()
+	{
+		hubConnection = new HubConnectionBuilder()
+			.WithUrl(NavigationManager.ToAbsoluteUri("/plchub"))
+			.WithAutomaticReconnect()
+			.Build();
+
+		hubConnection.On<PLCDataDto>("ReceivePlcValue", data =>
+		{
+			if (data != null)
+			{
+				pLCDataDto = data;
+				if (lotNo =="")
+				{
+					lotNo= pLCDataDto.LotStateDto?.LotNo ?? "";	
+				}
+
+				ReceivePlcValueHandler((double)pLCDataDto.Value1, (double)pLCDataDto.Value2, (double)pLCDataDto.Value3);
+				InvokeAsync(StateHasChanged);
+			}
+		});
+
+		await hubConnection.StartAsync();
+
+
+		if (hubConnection.State == HubConnectionState.Connected)
+		{
+			isConnected = true;
+			await hubConnection.InvokeAsync("JoinMachineGroup", id);
+		}
+		else
+		{
+			Console.WriteLine("⚠️ SignalR not connected, cannot send commands.");
+		}
+	}
+
+	// Chart
+	private async Task InitializePlotModel()
+	{
+		plotModel = new PlotModel { Title = "Real-time Data" };
+		plotModel.Axes.Add(new DateTimeAxis
+		{
+			Position = AxisPosition.Bottom,
+			StringFormat = "HH:mm:ss",
+			IsZoomEnabled = true, // Bật zoom trục X
+			IsPanEnabled = true,   // Bật pan trục X
+			MaximumPadding = 0.1,
+			MinimumPadding = 0.1,
+			MajorGridlineStyle = LineStyle.Solid, // Thêm đường grid dọc
+			MinorGridlineStyle = LineStyle.Dot,  // Đường grid phụ
+		});
+		plotModel.Axes.Add(new LinearAxis
+		{
+			Position = AxisPosition.Left,
+			IsZoomEnabled = true, // Bật zoom trục Y
+			IsPanEnabled = true,   // Bật pan trục Y
+			MaximumPadding = 0.1,
+			MinimumPadding = 0.1,
+			MajorGridlineStyle = LineStyle.Solid, // Thêm đường grid dọc
+			MinorGridlineStyle = LineStyle.Dot,  // Đường grid phụ
+		});
+		plotModel.Series.Add(new LineSeries { Title = "Max" });
+		plotModel.Series.Add(new LineSeries { Title = "Min" });
+		plotModel.Series.Add(new LineSeries { Title = "Ave" });
+	}
+
+	private async Task LoadHistoricalData(TimeSpan timeSpan)
+	{
+		// Gọi service của mày để lấy dữ liệu PLC lịch sử cho machineId
+		var historicalData = await plcService.GetPLCDataByMachineId(id, timeSpan);
+
+		if (historicalData != null && historicalData.Any())
+		{
+			var endTime = DateTime.Now;
+			var startTime = endTime - timeSpan;
+
+			var filteredData = historicalData
+				.Where(x => x.Timestamp >= startTime && x.Timestamp <= endTime)
+				.OrderBy(x => x.Timestamp)
+				.ToList();
+			foreach (var dataPoint in historicalData)
+			{
+				((LineSeries)plotModel.Series[0]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(dataPoint.Timestamp ?? DateTime.Now), dataPoint.Value1 ?? 0));
+				((LineSeries)plotModel.Series[1]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(dataPoint.Timestamp ?? DateTime.Now), dataPoint.Value2 ?? 0));
+				((LineSeries)plotModel.Series[2]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(dataPoint.Timestamp ?? DateTime.Now), dataPoint.Value3 ?? 0));
+			}
+			// Thiết lập phạm vi hiển thị ban đầu
+			((DateTimeAxis)plotModel.Axes[0]).Minimum = DateTimeAxis.ToDouble(startTime);
+			((DateTimeAxis)plotModel.Axes[0]).Maximum = DateTimeAxis.ToDouble(endTime);
+			plotModel.InvalidatePlot(true);
+
+		}
+	}
+	private bool isSaving = false;
+	private async Task Save()
+	{
+		isSaving = true; // bật trạng thái loading
+        try
+        {
+            var lotState = pLCDataDto.LotStateDto;
+
+            if (lotState == null)
+            {
+                snackbar.Add("Máy chưa chạy", Severity.Warning);
+                return;
+            }
+
+            lotState.LotNo = lotNo;
+            await ILotStateService.UpdateLotState(lotState);
+            snackbar.Add("Lot No saved successfully", Severity.Success);
+        }
+        finally
+        {
+            isSaving = false; // tắt trạng thái loading
+        }
+	}
+
+	public async ValueTask DisposeAsync()
+	{
+		if (hubConnection is not null)
+		{
+			await hubConnection.DisposeAsync();
+		}
+	}
+	private void ReceivePlcValueHandler(double value1, double value2, double value3)
+	{
+		if (isConnected && plotModel != null)
+		{
+			var now = DateTime.Now;
+
+			((LineSeries)plotModel.Series[0]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(DateTime.Now), value1));
+			((LineSeries)plotModel.Series[1]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(DateTime.Now), value2));
+			((LineSeries)plotModel.Series[2]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(DateTime.Now), value3));
+
+			// Giới hạn số lượng điểm dữ liệu để giữ cho biểu đồ không quá tải
+			foreach (var series in plotModel.Series)
+			{
+				if (series is LineSeries lineSeries) // Kiểm tra và ép kiểu sang LineSeries
+				{
+					while (lineSeries.Points.Count > MaxHistoricalPoints)
+					{
+						lineSeries.Points.RemoveAt(0);
+					}
+				}
+			}
+			// Tự động di chuyển trục X để luôn hiển thị 2 tiếng gần nhất
+			((DateTimeAxis)plotModel.Axes[0]).Minimum = DateTimeAxis.ToDouble(now - DisplayTimeSpan);
+			((DateTimeAxis)plotModel.Axes[0]).Maximum = DateTimeAxis.ToDouble(now);
+
+			plotModel.InvalidatePlot(true);
+		//	StateHasChanged();
+		}
+	}
+	private string GetElapsedTime(DateTime? startTime)
+	{
+		if (startTime.HasValue)
+		{
+			TimeSpan elapsed = DateTime.Now - startTime.Value;
+			return $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}"; // Định dạng bao gồm giờ
+		}
+		return "00:00:00"; // Định dạng mặc định
+	}
+}

@@ -1,0 +1,50 @@
+{
+    "profiles": {
+        "http": {
+            "commandName": "Project",
+            "launchBrowser": true,
+            "environmentVariables": {
+                "ASPNETCORE_ENVIRONMENT": "Development"
+            },
+            "dotnetRunMessages": true,
+            "applicationUrl": "http://localhost:5275"
+        },
+        "WSL": {
+            "commandName": "WSL2",
+            "launchBrowser": true,
+            "launchUrl": "http://localhost:5275",
+            "environmentVariables": {
+                "ASPNETCORE_ENVIRONMENT": "Development",
+                "ASPNETCORE_URLS": "http://localhost:5275"
+            },
+            "distributionName": ""
+        },
+        "IIS Express": {
+            "commandName": "IISExpress",
+            "launchBrowser": true,
+            "environmentVariables": {
+                "ASPNETCORE_ENVIRONMENT": "Development"
+            }
+        },
+        "Container (Dockerfile)": {
+            "commandName": "Docker",
+            "launchBrowser": true,
+            "launchUrl": "http://localhost:8080", // Đảm bảo đường dẫn hợp lệ cho Docker container
+            "environmentVariables": {
+                "ASPNETCORE_HTTP_PORTS": "8080", // Đảm bảo ánh xạ đúng port HTTP
+                "ASPNETCORE_HTTPS_PORTS": "8081" // Nếu bạn không muốn sử dụng SSL, có thể bỏ cấu hình này
+            },
+            "publishAllPorts": true,
+            "useSSL": false // Tắt SSL nếu không sử dụng HTTPS
+        }
+    },
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "iisSettings": {
+    "windowsAuthentication": false,
+    "anonymousAuthentication": true,
+    "iisExpress": {
+      "applicationUrl": "http://localhost:59469/",
+      "sslPort": 44337
+    }
+  }
+}

@@ -1,0 +1,122 @@
+﻿@page "/Audit"
+@using LoSay.Application.DTOs
+@using LoSay.Application.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject NavigationManager Navigation
+@inject Providers.TokenAuthenticationStateProvider TokenAuthenticationStateProvider
+@inject IAuditLogService AuditLogService
+@inject IDialogService DialogService
+
+
+<MudText Typo="Typo.h5">Audit Logs</MudText>
+@if (_logs == null || _logs.Count() == 0)
+{
+	<MudText>Empty</MudText>
+}
+else
+{
+	<MudTable Items="_logs" Dense Hover Bordered>
+		<HeaderContent>
+			<MudTh>Time</MudTh>
+			<MudTh>User</MudTh>
+			<MudTh>Action</MudTh>
+			<MudTh>Table</MudTh>
+			<MudTh>Detail</MudTh>
+		</HeaderContent>
+
+		<RowTemplate>
+			<MudTd>@context.CreatedDate.LocalDateTime</MudTd>
+			<MudTd>@context.FullName</MudTd>
+			<MudTd>
+				<MudChip T="string" Color="@GetColor(context.Action)" Size="Size.Small">
+					@context.Action
+				</MudChip>
+			</MudTd>
+			<MudTd>@context.TableName</MudTd>
+			<MudTd>
+				<MudButton Size="Size.Small" Variant="Variant.Outlined"
+						   OnClick="() => ShowDetail(context)">
+					View
+				</MudButton>
+			</MudTd>
+		</RowTemplate>
+
+	</MudTable>
+}
+
+
+
+
+<MudDialog @bind-IsVisible="_showDialog">
+	<DialogContent>
+		<MudText Typo="Typo.h6">Audit Detail</MudText>
+
+		<MudText><b>Primary Key:</b></MudText>
+		<MudCodeHighlight Code="@_selected?.PrimaryKey" />
+
+		@if (!string.IsNullOrEmpty(_selected?.OldValues))
+		{
+			<MudText><b>Old Values</b></MudText>
+			<MudCodeHighlight Code="@_selected!.OldValues" />
+		}
+
+		@if (!string.IsNullOrEmpty(_selected?.NewValues))
+		{
+			<MudText><b>New Values</b></MudText>
+			<MudCodeHighlight Code="@_selected!.NewValues" />
+		}
+	</DialogContent>
+</MudDialog>
+
+@code {
+	[CascadingParameter]
+	private Task<AuthenticationState> AuthenticationStateTask { get; set; }
+
+
+	private List<AuditLogDto> _logs = new();
+	private bool _showDialog;
+	private AuditLogDto? _selected;
+
+	protected override async Task OnInitializedAsync()
+	{
+		var authenticationState = await AuthenticationStateTask;
+		var user = authenticationState.User;
+		// Kiểm tra nếu người dùng không được xác thực
+		if (user.Identity == null || !user.Identity.IsAuthenticated)
+		{
+			Navigation.NavigateTo("/login", false);
+			return;
+		}
+		_logs = await AuditLogService.GetAllAsync();
+	}
+
+	void ShowDetail(AuditLogDto log)
+	{
+		var parameters = new DialogParameters
+		{
+			{ "Audit", log }
+		};
+
+		var options = new DialogOptions
+		{
+			CloseButton = true,
+			MaxWidth = MaxWidth.Large,
+			FullWidth = true
+		};
+
+		DialogService.Show<AuditLogDetailDialog>(
+			"Audit Log Detail",
+			parameters,
+			options);
+	}
+
+
+	Color GetColor(string action) => action switch
+	{
+		"ADDED" => Color.Success,
+		"MODIFIED" => Color.Warning,
+		"DELETED" => Color.Error,
+		_ => Color.Default
+	};
+}

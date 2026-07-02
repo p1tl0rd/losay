@@ -1,0 +1,54 @@
+﻿@page "/plc"
+
+@inject NavigationManager NavigationManager
+
+
+@if (plcData != null)
+{
+    <p><b>LotNo:</b> @plcData.LotNo</p>
+    <p><b>Value1:</b> @plcData.Value1</p>
+    <p><b>Value2:</b> @plcData.Value2</p>
+    <p><b>Value3:</b> @plcData.Value3</p>
+    <p><b>Value4:</b> @plcData.Value4</p>
+}
+else
+{
+    <p>Đang chờ dữ liệu...</p>
+}
+
+@code {
+    private HubConnection? hubConnection;
+    private int MachineId = 1;
+    private PLCDataDto? plcData;
+
+    protected override async Task OnInitializedAsync()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/plchub"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<PLCDataDto>("ReceivePlcValue", data =>
+        {
+            if (data != null)
+            {
+                plcData = data;
+                InvokeAsync(StateHasChanged);
+            }
+        });
+
+
+        await hubConnection.StartAsync();
+        await hubConnection.InvokeAsync("JoinMachineGroup", MachineId);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+   
+}

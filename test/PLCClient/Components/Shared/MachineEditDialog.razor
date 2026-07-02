@@ -1,0 +1,64 @@
+﻿@using MudBlazor
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IMachineService MachineService
+
+<MudDialog>
+    <DialogContent>
+        <EditForm Model="MachineDto" OnValidSubmit="Save">
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="MachineDto.MachineName" Label="Tên Máy" Required RequiredError="Tên máy là bắt buộc" MaxLength="10" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="MachineDto.Address" Label="Địa Chỉ PLC" MaxLength="20" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox @bind-Value="MachineDto.Status" Color="Color.Success" Label="Trạng thái hoạt động"></MudCheckBox>
+                </MudItem>
+            </MudGrid>
+            <DataAnnotationsValidator />
+        </EditForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Hủy</MudButton>
+        <MudButton Color="Color.Primary" OnClick="HandleSubmit" >Lưu</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter]
+    public MachineDto MachineDto { get; set; } = new();
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+    private string ButtonText => MachineDto.Id == 0 ? "Thêm" : "Lưu";
+    private bool isValid;
+    private async Task Save()
+    {
+        try
+        {
+            if (MachineDto.Id == 0)
+            {
+                await MachineService.CreateMachineAsync(MachineDto);
+            }
+            else
+            {
+                await MachineService.UpdateMachineAsync(MachineDto);
+            }
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Lỗi khi lưu máy", Severity.Error);
+        }
+    }
+
+    private async Task Cancel()
+    {
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+    private async Task HandleSubmit()
+    {
+        await Save();
+    }
+}

@@ -1,0 +1,81 @@
+## .NET / Visual Studio standard ignore
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+## IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+## Build artifacts
+*.log
+*.tmp
+*.bak
+*.tmp_proj
+*.cache
+
+## OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## NuGet
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## Testing
+TestResults/
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+
+## Logs
+logs/
+*.log
+build*.txt
+build.log
+
+## Misc
+*.orig
+*.rej
+.pgsql/
+.publish/
+*.dbmdl
+*.dbproj
+*.jfm
+*.pfx
+*.publishsettings
+*.publishproj
+PublishProfiles/
+.azure/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+.vs/
+
+## Rider
+_ReSharper*/
+*.[Rr]e[Ss]harper
+_ReSharper.Caches
+
+## Local secrets (NEVER commit)
+appsettings.*.local.json
+secrets.json
+*.pfx
+*.p12

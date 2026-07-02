@@ -1,0 +1,392 @@
+@page "/MachineDetail/{machineName}"
+@using LoSay.Servies.Interfaces
+@using Microsoft.AspNetCore.SignalR.Client
+@inject NavigationManager Navigation
+@inject IPLCService plcService
+@inject ISnackbar snackbar
+@implements IDisposable
+@inject ILogger<MachineDetail> _logger
+@using LoSay.Components.Shared
+
+@using OxyPlot
+@using OxyPlot.Series
+@using OxyPlot.Axes
+@using OxyPlot.Blazor
+
+<MudContainer>
+	<MudText Typo="Typo.h4" GutterBottom="true">PLC Monitor - @machineName</MudText>
+
+	<MudGrid Spacing="4">
+		<MudItem xs="12" md="6">
+			<MudPaper Elevation="3" Class="pa-4">
+				<MudText Typo="Typo.h6" GutterBottom="true">Lot Control</MudText>
+				<MudDivider Class="my-2" />
+				<MudTextField @bind-Value="inputLotNo"
+							  Label="Enter Lot No"
+							  Variant="Variant.Outlined"
+							  Adornment="Adornment.Start"
+							  AdornmentIcon="@Icons.Material.Filled.Numbers"
+							  Immediate="true"
+							  Disabled="@isLotRunning" />
+
+				@*<MudButton OnClick="StartLot" Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow" Disabled="string.IsNullOrEmpty(inputLotNo) || isLotRunning" Class="mr-2">Start Lot</MudButton>
+				<MudButton OnClick="FinishLot" Color="Color.Error" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Stop" Disabled="!isLotRunning">Finish Lot</MudButton> *@
+
+				<MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow" Disabled="string.IsNullOrEmpty(inputLotNo) || isLotRunning" Class="mr-2">Start Lot</MudButton>
+				<MudButton Color="Color.Error" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Stop" Disabled="!isLotRunning">Finish Lot</MudButton>
+
+				@if (!string.IsNullOrEmpty(lotNo))
+				{
+					<MudText Class="mt-2"><b>Current Lot:</b> @lotNo</MudText>
+					<MudText Class="mt-2"><b>Start Time:</b> @(startTime.HasValue? startTime.Value.ToString("yyyy-MM-dd HH:mm:ss") : "N/A")</MudText>
+					<MudText Class="mt-2"><b>Time Elapsed:</b> @GetElapsedTime(startTime)</MudText>
+				}
+			</MudPaper>
+		</MudItem>
+
+		<MudItem xs="12" md="6">
+			<MudPaper Elevation="3" Class="pa-4">
+				<MudText Typo="Typo.h6" GutterBottom="true">PLC Data</MudText>
+				<MudDivider Class="my-2" />
+
+				<MudText><b>CH 1:</b> @plcValue1</MudText>
+				<MudText><b>CH 2:</b> @plcValue2</MudText>
+				<MudText><b>CH 3:</b> @plcValue3</MudText>
+				<MudText><b>Status:</b> @running</MudText>
+				@* <MudText><b>Value 5:</b> @plcValue5</MudText> *@
+			</MudPaper>
+		</MudItem>
+
+
+		<MudItem xs="12">
+			@if (isConnected)
+			{
+				<MudPaper Elevation="3" Class="pa-4">
+					<MudText Typo="Typo.h6" GutterBottom="true">Real-time Data</MudText>
+					<MudDivider Class="my-2" />
+					<BlazorPlotView Width="100%" Height="400px" Model="plotModel" />
+				</MudPaper>
+			}
+			else
+			{
+				<MudAlert Severity="Severity.Warning">
+					<MudIcon Icon="@Icons.Material.Filled.Warning" Class="mr-2" />
+					Connecting to PLC...
+				</MudAlert>
+			}
+		</MudItem>
+
+
+	</MudGrid>
+</MudContainer>
+
+<style>
+	.pa-4 {
+		padding: 16px;
+	}
+
+	.my-2 {
+		margin-top: 8px;
+		margin-bottom: 8px;
+	}
+</style>
+
+@code {
+	[Parameter] public string machineName { get; set; }
+	[Parameter] public int id { get; set; }
+
+	private HubConnection? hubConnection;
+	private bool isConnected = false;
+	private double plcValue1;
+	private double plcValue2;
+	private double plcValue3;
+	private double plcValue4;
+	private double plcValue5;
+	private string lotNo = "";
+	private string inputLotNo = "";
+	private bool isLotRunning = false;
+	private string running = "OFF";
+	private DateTime? startTime;  // Th�m bi?n startTime
+	[Inject] private IServiceProvider _serviceProvider { get; set; } // Inject IServiceProvider
+
+	private List<PLCData> historicalData = new List<PLCData>();  // D? li?u qu� kh?
+	private DateTime? lastUpdateTime;
+
+	private PlotModel plotModel;
+	private const int MaxHistoricalPoints = 1400;
+	private readonly TimeSpan DisplayTimeSpan = TimeSpan.FromHours(2);
+
+	private async Task StartLot()
+	{
+		if (!string.IsNullOrWhiteSpace(inputLotNo))
+		{
+			try
+			{
+				await plcService.StartLotAsync(id, inputLotNo);
+				lotNo = inputLotNo; // ? �?m b?o g�n gi� tr? v�o lotNo
+				inputLotNo = "";     // ? Clear input sau khi start
+				isLotRunning = true;
+				startTime = DateTime.Now; // ? �?m b?o g�n gi� tr? v�o startTime
+										  //StartElapsedTimeTimer(); // B? timer, t�nh to�n tr?c ti?p
+				snackbar.Add("Lot Started Successfully!", Severity.Success);
+				StateHasChanged(); // ? Quan tr?ng: G?i StateHasChanged d? c?p nh?t UI
+				Console.WriteLine($"? Start Lot v?i LotNo: {lotNo}, Start Time: {startTime}");
+			}
+			catch (Exception ex)
+			{
+				snackbar.Add($"Failed to start Lot: {ex.Message}", Severity.Error);
+				Console.WriteLine($"Error StartLot: {ex}");
+			}
+		}
+	}
+
+	private async Task FinishLot()
+	{
+		try
+		{
+			await plcService.FinishLotAsync(id);
+			lotNo = "";
+			inputLotNo = "";
+			isLotRunning = false;
+			snackbar.Add("Lot Finished Successfully!", Severity.Success);
+			StateHasChanged(); // G?i StateHasChanged() sau khi c?p nh?t tr?ng th�i
+			Console.WriteLine("? FinishLot th�nh c�ng. UI c?p nh?t.");
+		}
+		catch (Exception ex)
+		{
+			snackbar.Add($"Failed to finish Lot: {ex.Message}", Severity.Error);
+			Console.WriteLine($"Error FinishLot: {ex}");
+		}
+	}
+
+	private async Task InitSignalR()
+	{
+		hubConnection = new HubConnectionBuilder()
+			.WithUrl(Navigation.BaseUri + "plchub")
+			.WithAutomaticReconnect()
+			.Build();
+
+		hubConnection.Closed += async (error) =>
+		{
+			Console.WriteLine("? SignalR disconnected. Reconnecting...");
+			isConnected = false;
+			isLotRunning = false;
+			await InvokeAsync(StateHasChanged);
+		};
+
+		hubConnection.Reconnected += async (connectionId) =>
+		{
+			Console.WriteLine($"?? SignalR reconnected: {connectionId}");
+			isConnected = true;
+
+			await hubConnection.SendAsync("JoinMachineGroup", id);
+			await hubConnection.SendAsync("GetLatestPlcData", id);
+
+			await InvokeAsync(StateHasChanged);
+		};
+
+		try
+		{
+			await hubConnection.StartAsync();
+			Console.WriteLine("? SignalR connected successfully.");
+		}
+		catch (Exception ex)
+		{
+			Console.WriteLine($"? SignalR connection error: {ex.Message}");
+			return;
+		}
+
+		hubConnection.On<int, string?, double, double, double, double, double>("ReceivePlcValue", async (machineId, lotNo, v1, v2, v3, v4, v5) =>
+		{
+			if (machineId == id)
+			{
+				await InvokeAsync(() =>
+				{
+					plcValue1 = v1;
+					plcValue2 = v2;
+					plcValue3 = v3;
+					plcValue4 = v4;
+					plcValue5 = v5;
+
+					// ?????? Ch? c?p nh?t lotNo n?u trang m?i load ho?c lotNo t? PLC kh�c null v� kh�c gi� tr? hi?n t?i
+					if (string.IsNullOrEmpty(this.lotNo) || (!string.IsNullOrEmpty(lotNo) && this.lotNo != lotNo))
+					{
+						this.lotNo = lotNo;
+						isLotRunning = !string.IsNullOrEmpty(lotNo);
+					}
+
+					Console.WriteLine($"?? Data: {lotNo}, {plcValue1}, {plcValue2}, {plcValue3}, {plcValue4}, {plcValue5}");
+					ReceivePlcValueHandler(v1, v2, v3);
+					if (plcValue4 < 13740) running = "ON";
+					else running = "OFF";
+
+					StateHasChanged();
+				});
+			}
+		});
+
+		if (hubConnection.State == HubConnectionState.Connected)
+		{
+			isConnected = true;
+			await hubConnection.SendAsync("JoinMachineGroup", id);
+			await hubConnection.SendAsync("GetLatestPlcData", id);
+		}
+		else
+		{
+			Console.WriteLine("?? SignalR not connected, cannot send commands.");
+		}
+	}
+
+	protected override async Task OnInitializedAsync()
+	{
+		var uri = new Uri(Navigation.Uri);
+		var queryParams = System.Web.HttpUtility.ParseQueryString(uri.Query);
+		id = int.Parse(queryParams["id"] ?? "0");
+
+		await InitSignalR();
+		await InitializePlotModel();
+		await LoadHistoricalData(TimeSpan.FromHours(2)); // T?i d? li?u 2 ti?ng g?n nh?t
+
+		// Load Lot Start Time
+		lotNo = await plcService.GetCurrentLotNoAsync(id);
+
+
+		if (!string.IsNullOrEmpty(lotNo))
+		{
+			isLotRunning = true;
+			startTime = await plcService.GetLotStartTimeAsync(id);
+		}
+		//T?i l?i LotNo t? database khi trang t?i
+		try
+		{
+			lotNo = await plcService.GetCurrentLotNoAsync(id) ?? ""; // N?u null, g�n r?ng
+			isLotRunning = !string.IsNullOrEmpty(lotNo);
+		}
+		catch (Exception ex)
+		{
+			snackbar.Add($"Error loading Lot information: {ex.Message}", Severity.Error);
+		}
+	}
+
+	public async ValueTask DisposeAsync()
+	{
+		if (hubConnection is not null)
+		{
+			await hubConnection.StopAsync();
+			await hubConnection.DisposeAsync();
+		}
+	}
+	public void Dispose()  //Th�m phuong th?c Dispose()
+	{
+		// Gi?i ph�ng t�i nguy�n ? d�y (n?u c�)
+		// V� d?: Ng?t k?t n?i SignalR
+		if (hubConnection != null)
+		{
+			hubConnection.StopAsync().GetAwaiter().GetResult();  // Ch� �: �?ng b? d? don gi?n
+			hubConnection.DisposeAsync().GetAwaiter().GetResult();
+		}
+		Console.WriteLine($"Component {machineName} is being disposed.");
+	}
+
+	// Chart
+	private async Task InitializePlotModel()
+	{
+		plotModel = new PlotModel { Title = "Real-time Data" };
+		plotModel.Axes.Add(new DateTimeAxis
+		{
+			Position = AxisPosition.Bottom,
+			StringFormat = "HH:mm:ss",
+			IsZoomEnabled = true, // B?t zoom tr?c X
+			IsPanEnabled = true,   // B?t pan tr?c X
+			MaximumPadding = 0.1,
+			MinimumPadding = 0.1,
+			MajorGridlineStyle = LineStyle.Solid, // Th�m du?ng grid d?c
+			MinorGridlineStyle = LineStyle.Dot,  // �u?ng grid ph?
+		});
+		plotModel.Axes.Add(new LinearAxis
+		{
+			Position = AxisPosition.Left,
+			IsZoomEnabled = true, // B?t zoom tr?c Y
+			IsPanEnabled = true,   // B?t pan tr?c Y
+			MaximumPadding = 0.1,
+			MinimumPadding = 0.1,
+			MajorGridlineStyle = LineStyle.Solid, // Th�m du?ng grid d?c
+			MinorGridlineStyle = LineStyle.Dot,  // �u?ng grid ph?
+		});
+		plotModel.Series.Add(new LineSeries { Title = "Max" });
+		plotModel.Series.Add(new LineSeries { Title = "Min" });
+		plotModel.Series.Add(new LineSeries { Title = "Ave" });
+	}
+
+	private async Task LoadHistoricalData(TimeSpan timeSpan)
+	{
+		// G?i service c?a m�y d? l?y d? li?u PLC l?ch s? cho machineId
+		var historicalData = await plcService.GetHistoricalPlcDataAsync(id, timeSpan);
+
+		if (historicalData != null && historicalData.Any())
+		{
+			var endTime = DateTime.Now;
+			var startTime = endTime - timeSpan;
+
+			var filteredData = historicalData
+				.Where(x => x.Timestamp >= startTime && x.Timestamp <= endTime)
+				.OrderBy(x => x.Timestamp)
+				.ToList();
+			foreach (var dataPoint in historicalData)
+			{
+				((LineSeries)plotModel.Series[0]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(dataPoint.Timestamp ?? DateTime.Now), dataPoint.Value1 ?? 0));
+				((LineSeries)plotModel.Series[1]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(dataPoint.Timestamp ?? DateTime.Now), dataPoint.Value2 ?? 0));
+				((LineSeries)plotModel.Series[2]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(dataPoint.Timestamp ?? DateTime.Now), dataPoint.Value3 ?? 0));
+			}
+			// Thi?t l?p ph?m vi hi?n th? ban d?u
+			((DateTimeAxis)plotModel.Axes[0]).Minimum = DateTimeAxis.ToDouble(startTime);
+			((DateTimeAxis)plotModel.Axes[0]).Maximum = DateTimeAxis.ToDouble(endTime);
+			plotModel.InvalidatePlot(true);
+
+		}
+	}
+
+	private void ReceivePlcValueHandler(double value1, double value2, double value3)
+	{
+		if (isConnected && plotModel != null)
+		{
+			var now = DateTime.Now;
+
+			((LineSeries)plotModel.Series[0]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(DateTime.Now), value1));
+			((LineSeries)plotModel.Series[1]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(DateTime.Now), value2));
+			((LineSeries)plotModel.Series[2]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(DateTime.Now), value3));
+
+			// Gi?i h?n s? lu?ng di?m d? li?u d? gi? cho bi?u d? kh�ng qu� t?i
+			foreach (var series in plotModel.Series)
+			{
+				if (series is LineSeries lineSeries) // Ki?m tra v� �p ki?u sang LineSeries
+				{
+					while (lineSeries.Points.Count > MaxHistoricalPoints)
+					{
+						lineSeries.Points.RemoveAt(0);
+					}
+				}
+			}
+			// T? d?ng di chuy?n tr?c X d? lu�n hi?n th? 2 ti?ng g?n nh?t
+			((DateTimeAxis)plotModel.Axes[0]).Minimum = DateTimeAxis.ToDouble(now - DisplayTimeSpan);
+			((DateTimeAxis)plotModel.Axes[0]).Maximum = DateTimeAxis.ToDouble(now);
+
+			plotModel.InvalidatePlot(true);
+			StateHasChanged();
+		}
+	}
+
+	private string GetElapsedTime(DateTime? startTime)
+	{
+		if (startTime.HasValue)
+		{
+			TimeSpan elapsed = DateTime.Now - startTime.Value;
+			return $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}"; // �?nh d?ng bao g?m gi?
+		}
+		return "00:00:00"; // �?nh d?ng m?c d?nh
+	}
+
+
+
+
+}

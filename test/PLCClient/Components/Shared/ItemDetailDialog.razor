@@ -1,0 +1,66 @@
+﻿
+
+@inject IItemService ItemService
+@inject IDialogService DialogService
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        <EditForm Model="itemDetailDto" OnValidSubmit="Save">
+            <MudGrid Spacing="2">
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="itemDetailDto.ClassName" Label="Mã Item" Required RequiredError="Mã Item là bắt buộc" MaxLength="50" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="itemDetailDto.Temperature" Label="Tên Item" Required RequiredError="Tên Item là bắt buộc" MaxLength="50" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="itemDetailDto.TimeDrying" Label="Max Value" Required RequiredError="Max Value là bắt buộc" Variant="Variant.Outlined" InputType="InputType.Number" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudCheckBox @bind-Value="itemDetailDto.Status" T="bool" Label="Trạng thái hoạt động" Color="Color.Primary" />
+                </MudItem>
+            </MudGrid>
+            <DataAnnotationsValidator />
+        </EditForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Hủy</MudButton>
+        <MudButton Color="Color.Primary" OnClick="HandleSubmit">Lưu</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public ItemDetailDto itemDetailDto { get; set; } = new ItemDetailDto();
+    [Parameter]
+    public int itemId { get; set; }
+
+    private async Task Save()
+    {
+        if (itemDetailDto.Id == 0)
+        {
+			itemDetailDto.ItemId = itemId;  
+            await ItemService.CreateItemDetailAsync(itemDetailDto);
+        }
+        else
+        {
+            await ItemService.UpdateItemDetailAsync(itemDetailDto);
+        }
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private async Task HandleSubmit()
+    {
+        // MudForm không có Validate() khi dùng EditForm, ValidationMessage sẽ tự hiển thị
+        await Save();
+    }
+}

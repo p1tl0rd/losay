@@ -1,0 +1,181 @@
+@page "/"
+@using LoSay.Data.Model
+@using LoSay.Servies.Interfaces
+@inject IMachineService _machineService
+@inject IPLCService _plcService
+@inject NavigationManager NavManager
+@inject ISnackbar snackbar
+
+ 
+
+
+<PageTitle>Machine Overview</PageTitle>
+
+<MudContainer>
+    <MudText Typo="Typo.h4" GutterBottom="true">Machine Status</MudText>
+    <MudGrid Spacing="4">
+        @foreach (var machine in Machines)
+        {
+            <MudItem xs="12" sm="6" md="4" lg="3">
+                <MudCard Elevation="3" Class="machine-card"
+                         @onclick="@(() => NavManager.NavigateTo($"/MachineDetail/{machine.MachineName}?id={machine.Id}"))"
+                         Style="cursor: pointer;">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">@machine.MachineName</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudTooltip Text="Go to details" Color="Color.Primary" Placement="Placement.Top">
+                                <MudIconButton Icon="@Icons.Material.Filled.Info" Color="Color.Default" />
+                            </MudTooltip>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2">
+                            <b>Lot:</b> @GetLotNo(machine.Id)
+                        </MudText>
+                       
+                        @if (!string.IsNullOrEmpty(machine.LotRun)) // Ki?m tra null ho?c r?ng
+                        {
+                            <MudText Typo="Typo.body2">
+                                <b>Lot Run:</b> @machine.LotRun
+                            </MudText>
+                        }
+                        @if (GetStartTime(machine.Id).HasValue)
+                        {
+                            <MudText Typo="Typo.body2">
+                                <b>Start Time:</b> @GetStartTime(machine.Id)?.ToString("HH:mm:ss")
+                            </MudText>
+                            <MudText Typo="Typo.body2">
+                                <b>Elapsed:</b> @GetElapsedTime(GetStartTime(machine.Id))
+                            </MudText>
+                            <MudText Typo="Typo.body2">
+                                <b>CH1: CH2: CH3:</b>
+                            </MudText>
+                        }
+                    </MudCardContent>
+                    <MudCardActions Class="d-flex justify-center">
+                        @if (machine.Status == true && GetLotNo(machine.Id) == "Idle")
+                        {
+                            <MudChip T="string" Color="Color.Info" Variant="Variant.Filled" Icon="@Icons.Material.Filled.CheckCircleOutline">
+                                Ready
+                            </MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Color="@GetMachineStatusColor(machine.Id, machine.Status)"
+                                     Variant="Variant.Filled"
+                                     Icon="@GetMachineStatusIcon(machine.Id, machine.Status)">
+                                @GetMachineStatusText(machine.Id, machine.Status)
+                            </MudChip>
+                        }
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+
+
+</MudContainer>
+
+<style>
+    .machine-card:hover {
+        box-shadow: 0 8px 17px 0 rgba(0, 0, 0, 0.2);
+        transform: translateY(-2px);
+    }
+</style>
+
+@code {
+    List<MachineWithLotInfo> Machines = new List<MachineWithLotInfo>();
+    private Dictionary<int, string?> _lotNos = new Dictionary<int, string?>();
+    private Dictionary<int, DateTime?> _startTimes = new Dictionary<int, DateTime?>();
+
+    [Inject]
+    private ILogger<Index> _logger { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Machines = await _machineService.GetMachinesWithLotInfoAsync();
+            foreach (var machine in Machines)
+            {
+                _lotNos[machine.Id] = await _plcService.GetCurrentLotNoAsync(machine.Id);
+                _startTimes[machine.Id] = await _plcService.GetLotStartTimeAsync(machine.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error initializing machine data.");
+            snackbar.Add($"Error loading machine data: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string GetLotNo(int machineId)
+    {
+        return _lotNos.ContainsKey(machineId) && !string.IsNullOrEmpty(_lotNos[machineId]) ? _lotNos[machineId] : "Idle";
+    }
+
+    private string GetMachineStatusText(int machineId, bool? status)
+    {
+        if (status == true && _lotNos.ContainsKey(machineId) && !string.IsNullOrEmpty(_lotNos[machineId]))
+        {
+            return "Running";
+        }
+        else if (status == true)
+        {
+            return "Available";
+        }
+        else
+        {
+            return "Stopped";
+        }
+    }
+    private Color GetMachineStatusColor(int machineId, bool? status)
+    {
+        if (status == true && _lotNos.ContainsKey(machineId) && !string.IsNullOrEmpty(_lotNos[machineId]))
+        {
+            return Color.Success;
+        }
+        else if (status == true)
+        {
+            return Color.Info;
+        }
+        else
+        {
+            return Color.Error;
+        }
+    }
+
+    private string GetMachineStatusIcon(int machineId, bool? status)
+    {
+        if (status == true && _lotNos.ContainsKey(machineId) && !string.IsNullOrEmpty(_lotNos[machineId]))
+        {
+            return Icons.Material.Filled.PlayArrow;
+        }
+        else if (status == true)
+        {
+            return Icons.Material.Filled.AvTimer;
+        }
+        else
+        {
+            return Icons.Material.Filled.Stop;
+        }
+    }
+
+    private string GetElapsedTime(DateTime? startTime)
+    {
+        if (startTime.HasValue)
+        {
+            TimeSpan elapsed = DateTime.Now - startTime.Value;
+            return $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}"; // Ð?nh d?ng bao g?m gi?
+        }
+        return "00:00:00"; // Ð?nh d?ng m?c d?nh
+    }
+    private DateTime? GetStartTime(int machineId)
+    {
+        return _startTimes.ContainsKey(machineId) ? _startTimes[machineId] : null;
+    }
+
+   
+}

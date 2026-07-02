@@ -1,0 +1,150 @@
+﻿@page "/LotControl"
+@using Microsoft.AspNetCore.Components.Authorization
+
+@inject IMachineService MachineService
+@inject ILotStateService LotStateService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+
+<MudContainer>
+	<MudText Typo="Typo.h4" GutterBottom="true">Lot Control</MudText>
+	@if (LotStateDtos == null || MachineNames == null)
+	{
+		<MudProgressCircular Color="Color.Info" Indeterminate="true" />
+	}
+	else
+	{
+		<MudTable Items="@LotStateDtos" Hover="true" Dense="true" @ref="table" Loading=true
+				  T="LotStateDto"
+				  RowsPerPage="10"
+				  @bind-TotalItems="TotalItems"
+				  ServerData="@(async (x, ct) => await GetData(x, ct))"
+				  Filter="new Func<LotStateDto, bool>(FilterFunc)">
+			<ToolBarContent>
+				<MudTextField @bind-Value="searchString"
+							  Placeholder="Search"
+							  Adornment="Adornment.Start"
+							  AdornmentIcon="@Icons.Material.Filled.Search"
+							  IconSize="Size.Medium"
+							  Class="mt-0"
+							  OnKeyUp="@(async (e) => { if (e.Key == "Enter") { await table.ReloadServerData(); } })"></MudTextField>
+			</ToolBarContent>
+			<HeaderContent>
+				<MudTh Sortable="true" @onclick="@(e => SortTable(e, "LotNo"))">Lot No</MudTh>
+				<MudTh Sortable="true" @onclick="@(e => SortTable(e, "MachineName"))">Machine Name</MudTh>
+				<MudTh Sortable="true" @onclick="@(e => SortTable(e, "StartTime"))">Start Time</MudTh>
+				<MudTh Sortable="true" @onclick="@(e => SortTable(e, "EndTime"))">End Time</MudTh>
+				<MudTh Sortable="true" @onclick="@(e => SortTable(e, "TotalRunTime"))">Total Run Time</MudTh>
+				<MudTh>Actions</MudTh>
+			</HeaderContent>
+			<RowTemplate>
+				<MudTd DataLabel="Lot No">@context.LotNo</MudTd>
+				<MudTd DataLabel="Machine Name">@GetMachineName(context.MachineId)</MudTd>
+				<MudTd DataLabel="Start Time">@(context.StartTime.HasValue? context.StartTime.Value.ToString("dd.MMM.yy HH:mm:ss") : "N/A")</MudTd>
+				<MudTd DataLabel="End Time">@(context.EndTime.HasValue? context.EndTime.Value.ToString("dd.MMM.yy HH:mm:ss") : "Running")</MudTd>
+				<MudTd DataLabel="Total Run Time">@GetTotalRunTime(context.StartTime, context.EndTime)</MudTd>
+				<MudTd DataLabel="Actions">
+					<MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="@(() => PrintReport(context.LotNo, context.MachineId))">
+						<MudIcon Icon="@Icons.Material.Filled.Print" Class="mr-1"></MudIcon>
+						Print Report
+					</MudButton>
+				</MudTd>
+			</RowTemplate>
+			<NoRecordsContent>
+				<MudText>No matching records found.</MudText>
+			</NoRecordsContent>
+			<LoadingContent>
+				<MudText>Loading...</MudText>
+			</LoadingContent>
+			<PagerContent>
+				<MudTablePager PageSizeOptions="new int[] { 10, 20, 50, 100 }" />
+			</PagerContent>
+		</MudTable>
+	}
+
+</MudContainer>
+
+@code {
+
+	private List<LotStateDto> LotStateDtos = new List<LotStateDto>();
+	private Dictionary<int, string> MachineNames = new Dictionary<int, string>();
+	private string searchString = "";
+	private MudTable<LotStateDto> table;
+	private int TotalItems;
+	private string sortName = "StartTime";
+	private bool sortAscending = false;
+
+	protected override async Task OnInitializedAsync()
+	{
+	
+		var machines = await MachineService.GetMachines();
+		MachineNames = machines.ToDictionary(m => m.Id, m => m.MachineName ?? "Unknown");
+	}
+
+	private string GetMachineName(int machineId)
+	{
+		return MachineNames.ContainsKey(machineId) ? MachineNames[machineId] : "Unknown";
+	}
+
+	private async Task<TableData<LotStateDto>> GetData(TableState state, CancellationToken cancellationToken)
+	{
+		var pagedData = await LotStateService.GetLotStatesPagedAsync(
+					state.Page,
+					state.PageSize,
+					searchString,
+					sortName,
+					sortAscending
+				);
+		TotalItems = pagedData.TotalCount;
+
+		return new TableData<LotStateDto>() { TotalItems = TotalItems, Items = pagedData.Items };
+	}
+
+	private bool FilterFunc(LotStateDto element)
+	{
+		if (string.IsNullOrWhiteSpace(searchString))
+			return true;
+		if (element.LotNo.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+			return true;
+		if (GetMachineName(element.MachineId).Contains(searchString, StringComparison.OrdinalIgnoreCase))
+			return true;
+		// You can add more fields to search here if needed
+		return false;
+	}
+
+	private void SortTable(MouseEventArgs args, string columnName) // ✅ Sử dụng MouseEventArgs
+	{
+		if (sortName != columnName)
+		{
+			sortName = columnName;
+			sortAscending = true; // Default to ascending for new columns
+		}
+		else
+		{
+			sortAscending = !sortAscending;
+		}
+		table.ReloadServerData();
+	}
+
+	private string GetTotalRunTime(DateTime? startTime, DateTime? endTime)
+	{
+		if (startTime.HasValue)
+		{
+			DateTime end = endTime.HasValue ? endTime.Value : DateTime.Now;
+			TimeSpan duration = end - startTime.Value;
+			return $"{duration.Days} days, {duration.Hours} hours, {duration.Minutes} minutes, {duration.Seconds} seconds";
+		}
+		return "N/A";
+	}
+
+	// private async Task PrintReport(string lotNo, int machineId)
+	// {
+	//     // TODO: Implement logic to generate and print the report for the specific lot and machine
+	//     Console.WriteLine($"Printing report for Lot: {lotNo}, Machine ID: {machineId}");
+	//     await JSRuntime.InvokeVoidAsync("print"); // Simple browser print for now
+	// }
+	private async Task PrintReport(string lotNo, int machineId)
+	{
+		Navigation.NavigateTo($"/Chart/{machineId}/{lotNo}");
+	}
+}

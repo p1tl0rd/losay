@@ -1,0 +1,109 @@
+@page "/ItemManager"
+@using LoSay.Components.Shared
+@using LoSay.Data.Entities
+@using LoSay.Servies.Interfaces
+@inject IItemService ItemService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject ILogger<ItemManager> Logger
+
+<MudContainer>
+    <MudText Typo="Typo.h4" GutterBottom="true">Qu?n lý Item</MudText>
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="()=>OpenAddEditDialog()" Class="mb-4">
+        <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-1" />
+        Thêm Item M?i
+    </MudButton>
+
+    <MudTable Items="@Items" Hover="true" Dense="true" Bordered="true" Striped="true">
+        <HeaderContent>
+            <MudTh>ID</MudTh>
+            <MudTh>Mã Item</MudTh>
+            <MudTh>Tên Item</MudTh>
+            <MudTh>Max</MudTh>
+            <MudTh>Min</MudTh>
+            <MudTh>Time Sampling</MudTh>
+            <MudTh>Tr?ng Thái</MudTh>
+            <MudTh>Hành d?ng</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="ID">@context.Id</MudTd>
+            <MudTd DataLabel="Mã Item">@context.ItemCode</MudTd>
+            <MudTd DataLabel="Tên Item">@context.ItemName</MudTd>
+            <MudTd DataLabel="Max">@context.Max</MudTd>
+            <MudTd DataLabel="Min">@context.Min</MudTd>
+            <MudTd DataLabel="Time Sampling">@context.TimeSamping</MudTd>
+            <MudTd DataLabel="Tr?ng Thái">@((context.Status == true) ? "Ho?t d?ng" : "Ngung")</MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Warning" Size="Size.Small" OnClick="@(() => OpenAddEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => OpenDeleteConfirmDialog(context.Id))" />
+                <MudIconButton Icon="@Icons.Material.Filled.List" Color="Color.Info" Size="Size.Small" OnClick="@(() => Navigation.NavigateTo($"/ItemDetailManager/{context.Id}"))" />
+            </MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new int[] { 10, 20, 50 }" />
+        </PagerContent>
+    </MudTable>
+</MudContainer>
+
+@code {
+    private List<Item> Items = new List<Item>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadItems();
+    }
+
+    private async Task LoadItems()
+    {
+        try
+        {
+            Items = await ItemService.GetItemsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "L?i t?i danh sách Item");
+            Snackbar.Add("L?i t?i danh sách Item", Severity.Error);
+        }
+    }
+
+    private async Task OpenAddEditDialog(Item item = null)
+    {
+        var parameters = new DialogParameters();
+        if (item != null)
+        {
+            parameters.Add("Item", item);
+        }
+        var dialog = DialogService.Show<ItemDialog>("Thêm/S?a Item", parameters);
+        var result = await dialog.Result;
+        if (!result.Canceled)
+        {
+            await LoadItems();
+            Snackbar.Add("Thao tác Item thành công", Severity.Success);
+        }
+    }
+
+    private async Task OpenDeleteConfirmDialog(int id)
+    {
+        bool? result = await DialogService.ShowMessageBox(
+            "Xác nh?n",
+            $"B?n có ch?c ch?n mu?n xóa Item Id {id}?",
+            yesText: "Xóa", cancelText: "H?y");
+
+        if (result == true)
+        {
+            try
+            {
+                await ItemService.DeleteItemAsync(id);
+                await LoadItems();
+                Snackbar.Add("Xóa Item thành công", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "L?i khi xóa Item");
+                Snackbar.Add("L?i khi xóa Item", Severity.Error);
+            }
+        }
+    }
+}

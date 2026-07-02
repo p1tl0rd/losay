@@ -1,0 +1,218 @@
+﻿@page "/ItemManager"
+@using Microsoft.AspNetCore.Components.Authorization
+
+
+@inject IItemService ItemService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject Serilog.ILogger Logger
+
+<MudGrid>
+
+	<MudItem xs="12">
+		<MudText Typo="Typo.h4" GutterBottom="true">Quản lý Item</MudText>
+		<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => OpenAddEditDialog()" Class="mb-4">
+			<MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-1" />
+			Thêm Item Mới
+		</MudButton>
+	</MudItem>
+	<MudItem xs="6">
+		<MudTable Items="@Items" Hover="true" Dense="true" Bordered="true" Striped="true">
+			<HeaderContent>
+				<MudTh>No</MudTh>
+				<MudTh>Mã Item</MudTh>
+				<MudTh>Tên Item</MudTh>
+				<MudTh>Trạng Thái</MudTh>
+				<MudTh>Hành động</MudTh>
+			</HeaderContent>
+			<RowTemplate>
+				<MudTd>@context.No</MudTd>
+				<MudTd>@context.ItemCode</MudTd>
+				<MudTd>@context.ItemName</MudTd>
+				<MudTd>@((context.Status == true) ? "Hoạt động" : "Dừng")</MudTd>
+				<MudTd>
+					<MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Warning" Size="Size.Small" OnClick="@(() => OpenAddEditDialog(context))" />
+					<MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => OpenDeleteConfirmDialog(context.Id))" />
+					<MudIconButton Icon="@Icons.Material.Filled.List" Color="Color.Info" Size="Size.Small" OnClick="@(() => ShowDetail(context))" />
+				</MudTd>
+			</RowTemplate>
+			<PagerContent>
+				<MudTablePager PageSizeOptions="new int[] { 10, 20, 50 }" />
+			</PagerContent>
+		</MudTable>
+	</MudItem>
+	<MudItem xs="6">
+		<MudText Typo="Typo.h5" GutterBottom="true">@ItemName</MudText>
+		@if (!string.IsNullOrEmpty(ItemName))
+		{
+			<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => ItemDetailOpenAddEditDialog()" Class="mb-4">
+				<MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-1" />
+				Thêm Lớp Sơn
+			</MudButton>
+		}
+		
+		<MudTable Items="@ItemDetailDtos" Hover="true" Dense="true" Bordered="true" Striped="true">
+			<HeaderContent>
+				<MudTh>No</MudTh>
+				<MudTh>Tên Lớp</MudTh>
+				<MudTh>Temperature</MudTh>
+				<MudTh>TimeDrying</MudTh>
+				<MudTh>Trạng Thái</MudTh>
+				<MudTh>Hành động</MudTh>
+			</HeaderContent>
+			<RowTemplate>
+				<MudTd>@context.No</MudTd>
+				<MudTd>@context.ClassName</MudTd>
+				<MudTd>@context.Temperature</MudTd>
+				<MudTd>@context.TimeDrying</MudTd>
+				<MudTd>@((context.Status == true) ? "Hoạt động" : "Dừng")</MudTd>
+				<MudTd>
+					<MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Warning" Size="Size.Small" OnClick="@(() => ItemDetailOpenAddEditDialog(context))" />
+					<MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => ItemDetailOpenDeleteConfirmDialog(context.Id))" />
+				</MudTd>
+			</RowTemplate>
+			<PagerContent>
+				<MudTablePager PageSizeOptions="new int[] { 10, 20, 50 }" />
+			</PagerContent>
+		</MudTable>
+	</MudItem>
+</MudGrid>
+
+
+
+
+@code {
+	[CascadingParameter]
+	private Task<AuthenticationState> AuthenticationStateTask { get; set; }
+	private List<ItemDto> Items = new List<ItemDto>();
+	private List<ItemDetailDto> ItemDetailDtos = new List<ItemDetailDto>();
+	private string ItemName = "";
+	private ItemDto itemDto;
+
+	protected override async Task OnInitializedAsync()
+	{
+		var authenticationState = await AuthenticationStateTask;
+		var user = authenticationState.User;
+		// Kiểm tra nếu người dùng không được xác thực
+		if (user.Identity == null || !user.Identity.IsAuthenticated)
+		{
+			Navigation.NavigateTo("/login", false);
+			return;
+		}
+		await LoadItems();
+	}
+
+	private async Task LoadItems()
+	{
+		try
+		{
+			Items = await ItemService.GetItemsAsync();
+		}
+		catch (Exception ex)
+		{
+			Logger.Error(ex, "Lỗi tải danh sách Item");
+			Snackbar.Add("Lỗi tải danh sách Item", Severity.Error);
+		}
+	}
+
+	private async Task OpenAddEditDialog(ItemDto item = null)
+	{
+		var parameters = new DialogParameters();
+		if (item != null)
+		{
+			parameters.Add("itemDto", item);
+		}
+		var dialog = DialogService.Show<ItemDialog>("Thêm/Sửa Item", parameters);
+		var result = await dialog.Result;
+		if (!result.Canceled)
+		{
+			await LoadItems();
+			Snackbar.Add("Thao tác Item thành công", Severity.Success);
+		}
+	}
+
+	private async Task OpenDeleteConfirmDialog(int id)
+	{
+		bool? result = await DialogService.ShowMessageBox(
+			"Xác nhận",
+			$"Bạn có chắc chắn muốn xóa Item Id {id}?",
+			yesText: "Xóa", cancelText: "Hủy");
+
+		if (result == true)
+		{
+			try
+			{
+				await ItemService.DeleteItemAsync(id);
+				await LoadItems();
+				Snackbar.Add("Xóa Item thành công", Severity.Success);
+			}
+			catch (Exception ex)
+			{
+				Logger.Error(ex, "Lỗi khi xóa Item");
+				Snackbar.Add("Lỗi khi xóa Item", Severity.Error);
+			}
+		}
+	}
+
+	private async Task ShowDetail(ItemDto item)
+	{
+		ItemName = $"Chi Tiết Item: {item.ItemName}";
+		itemDto = item;
+		ItemDetailDtos = await ItemService.GetItemDetailsByItemIdAsync(item.Id);
+	}
+	//Item Detail Load
+	private async Task LoadItemDetails(int itemId)
+	{
+		try
+		{
+			ItemDetailDtos = await ItemService.GetItemDetailsByItemIdAsync(itemId);
+		}
+		catch (Exception ex)
+		{
+			Logger.Error(ex, "Lỗi tải chi tiết Item");
+			Snackbar.Add("Lỗi tải chi tiết Item", Severity.Error);
+		}
+	}
+	private async Task ItemDetailOpenAddEditDialog(ItemDetailDto itemDetailDto = null)
+	{
+		var parameters = new DialogParameters();
+		if (itemDetailDto != null)
+		{
+			parameters.Add("itemDetailDto", itemDetailDto);
+		}
+		else
+		{
+			parameters.Add("itemId", itemDto.Id);
+		}
+		var dialog = DialogService.Show<ItemDetailDialog>("Thêm/Sửa Item", parameters);
+		var result = await dialog.Result;
+		if (!result.Canceled)
+		{
+			await ShowDetail(itemDto);
+			Snackbar.Add("Thao tác Item thành công", Severity.Success);
+		}
+	}
+	private async Task ItemDetailOpenDeleteConfirmDialog(int id)
+	{
+		bool? result = await DialogService.ShowMessageBox(
+			"Xác nhận",
+			$"Bạn có chắc chắn muốn xóa Item Id {id}?",
+			yesText: "Xóa", cancelText: "Hủy");
+
+		if (result == true)
+		{
+			try
+			{
+				await ItemService.DeleteItemAsync(id);
+				await LoadItems();
+				Snackbar.Add("Xóa Item thành công", Severity.Success);
+			}
+			catch (Exception ex)
+			{
+				Logger.Error(ex, "Lỗi khi xóa Item");
+				Snackbar.Add("Lỗi khi xóa Item", Severity.Error);
+			}
+		}
+	}
+}
