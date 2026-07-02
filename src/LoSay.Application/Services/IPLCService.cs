@@ -18,6 +18,25 @@ namespace LoSay.Application.Services
 
 		//Read Data For create Chart
 		Task<IEnumerable<PLCDataDto>> GetPlcDataForLotReportAsync(int machineId, string lotNo);
+		Task<IEnumerable<PLCDataDto>> GetHistoricalPlcDataAsync(int machineId, TimeSpan timeSpan);
+		Task<IEnumerable<PLCDataDto>> GetPlcDataForLotReportAsync(int machineId, string lotNo, TimeSpan timeSpan);
 
+		// Lot management
+		Task StartLotAsync(int machineId, string lotNo);
+		Task<string> StartLotAutoAsync(int machineId);
+		Task FinishLotAsync(int machineId);
+		Task<string?> GetCurrentLotNoAsync(int machineId);
+		Task<DateTime?> GetLotStartTimeAsync(int machineId);
+		Task<string> GenerateNewLotNoAsync(int machineId);
+
+		// High-level processing (used by BackgroundService fetcher)
+		Task<ProcessedPlcData> GetProcessedPlcDataAsync(int machineId, string addressConfig);
+	}
+
+	public record ProcessedPlcData
+	{
+		public bool IsSuccess { get; init; }
+		public string? LotNo { get; init; }
+		public double[]? Values { get; init; }
 	}
 }
