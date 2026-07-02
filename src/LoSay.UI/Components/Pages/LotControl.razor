@@ -1,26 +1,22 @@
 @page "/LotControl"
-@using LoSay.Data.Repositories.Interfaces
-@using LoSay.Servies.Interfaces
-@inject ILotStateRepository LotStateRepository
+@inject ILotStateService LotStateService
 @inject IMachineService MachineService
-@inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
-@inject IServiceScopeFactory _serviceScopeFactory
 
 <MudContainer>
 	<MudText Typo="Typo.h4" GutterBottom="true">Lot Control</MudText>
-	@if (LotStates == null || MachineNames == null)
+	@if (MachineNames == null)
 	{
 		<MudProgressCircular Color="Color.Info" Indeterminate="true" />
 	}
 	else
 	{
 		<MudTable Items="@LotStates" Hover="true" Dense="true" @ref="table" Loading=true
-				  T="LotState"
+				  T="LotStateDto"
 				  RowsPerPage="10"
 				  @bind-TotalItems="TotalItems"
 				  ServerData="@(async (x, ct) => await GetData(x, ct))"
-				  Filter="new Func<LotState, bool>(FilterFunc)">
+				  Filter="new Func<LotStateDto, bool>(FilterFunc)">
 			<ToolBarContent>
 				<MudTextField @bind-Value="searchString"
 							  Placeholder="Search"
@@ -66,12 +62,12 @@
 </MudContainer>
 
 @code {
-	private List<LotState> LotStates = new List<LotState>();
+	private List<LotStateDto> LotStates = new List<LotStateDto>();
 	private Dictionary<int, string> MachineNames = new Dictionary<int, string>();
 	private string searchString = "";
-	private MudTable<LotState> table;
+	private MudTable<LotStateDto> table;
 	private int TotalItems;
-	private string sortName = "StartTime";
+	private string sortColumn = "StartTime";
 	private bool sortAscending = false;
 
 	protected override async Task OnInitializedAsync()
@@ -85,40 +81,36 @@
 		return MachineNames.ContainsKey(machineId) ? MachineNames[machineId] : "Unknown";
 	}
 
-	private async Task<TableData<LotState>> GetData(TableState state, CancellationToken cancellationToken)
+	private async Task<TableData<LotStateDto>> GetData(TableState state, CancellationToken cancellationToken)
 	{
-		using var scope = _serviceScopeFactory.CreateScope();
-		var lotStateRepository = scope.ServiceProvider.GetRequiredService<ILotStateRepository>();
-	//	var pagedData = await LotStateRepository.GetPagedLotStatesAsync(state.Page, state.PageSize, searchString, sortName, sortAscending);
-		var pagedData = await lotStateRepository.GetPagedLotStatesAsync(
+		var pagedData = await LotStateService.GetLotStatesPagedAsync(
 					state.Page,
 					state.PageSize,
 					searchString,
-					sortName,
+					sortColumn,
 					sortAscending
 				);
 		TotalItems = pagedData.TotalCount;
-		return new TableData<LotState>() { TotalItems = TotalItems, Items = pagedData.Items };
+		return new TableData<LotStateDto>() { TotalItems = TotalItems, Items = pagedData.Items };
 	}
 
-	private bool FilterFunc(LotState element)
+	private bool FilterFunc(LotStateDto element)
 	{
 		if (string.IsNullOrWhiteSpace(searchString))
 			return true;
-		if (element.LotNo.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+		if (element.LotNo != null && element.LotNo.Contains(searchString, StringComparison.OrdinalIgnoreCase))
 			return true;
 		if (GetMachineName(element.MachineId).Contains(searchString, StringComparison.OrdinalIgnoreCase))
 			return true;
-		// You can add more fields to search here if needed
 		return false;
 	}
 
-	private void SortTable(MouseEventArgs args, string columnName) // ? S? d?ng MouseEventArgs
+	private void SortTable(MouseEventArgs args, string columnName)
 	{
-		if (sortName != columnName)
+		if (sortColumn != columnName)
 		{
-			sortName = columnName;
-			sortAscending = true; // Default to ascending for new columns
+			sortColumn = columnName;
+			sortAscending = true;
 		}
 		else
 		{
@@ -138,13 +130,7 @@
 		return "N/A";
 	}
 
-	// private async Task PrintReport(string lotNo, int machineId)
-	// {
-	//     // TODO: Implement logic to generate and print the report for the specific lot and machine
-	//     Console.WriteLine($"Printing report for Lot: {lotNo}, Machine ID: {machineId}");
-	//     await JSRuntime.InvokeVoidAsync("print"); // Simple browser print for now
-	// }
-	private async Task PrintReport(string lotNo, int machineId)
+	private void PrintReport(string lotNo, int machineId)
 	{
 		Navigation.NavigateTo($"/Chart/{machineId}/{lotNo}");
 	}

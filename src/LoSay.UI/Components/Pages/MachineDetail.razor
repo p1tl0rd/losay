@@ -1,6 +1,4 @@
 @page "/MachineDetail/{machineName}"
-@using LoSay.Servies.Interfaces
-@using Microsoft.AspNetCore.SignalR.Client
 @inject NavigationManager Navigation
 @inject IPLCService plcService
 @inject ISnackbar snackbar
@@ -29,11 +27,8 @@
 							  Immediate="true"
 							  Disabled="@isLotRunning" />
 
-				@*<MudButton OnClick="StartLot" Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow" Disabled="string.IsNullOrEmpty(inputLotNo) || isLotRunning" Class="mr-2">Start Lot</MudButton>
-				<MudButton OnClick="FinishLot" Color="Color.Error" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Stop" Disabled="!isLotRunning">Finish Lot</MudButton> *@
-
-				<MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow" Disabled="string.IsNullOrEmpty(inputLotNo) || isLotRunning" Class="mr-2">Start Lot</MudButton>
-				<MudButton Color="Color.Error" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Stop" Disabled="!isLotRunning">Finish Lot</MudButton>
+				<MudButton OnClick="StartLot" Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow" Disabled="string.IsNullOrEmpty(inputLotNo) || isLotRunning" Class="mr-2">Start Lot</MudButton>
+				<MudButton OnClick="FinishLot" Color="Color.Error" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Stop" Disabled="!isLotRunning">Finish Lot</MudButton>
 
 				@if (!string.IsNullOrEmpty(lotNo))
 				{
@@ -53,7 +48,6 @@
 				<MudText><b>CH 2:</b> @plcValue2</MudText>
 				<MudText><b>CH 3:</b> @plcValue3</MudText>
 				<MudText><b>Status:</b> @running</MudText>
-				@* <MudText><b>Value 5:</b> @plcValue5</MudText> *@
 			</MudPaper>
 		</MudItem>
 
@@ -106,10 +100,10 @@
 	private string inputLotNo = "";
 	private bool isLotRunning = false;
 	private string running = "OFF";
-	private DateTime? startTime;  // Th�m bi?n startTime
-	[Inject] private IServiceProvider _serviceProvider { get; set; } // Inject IServiceProvider
+	private DateTime? startTime;
+	[Inject] private IServiceProvider _serviceProvider { get; set; }
 
-	private List<PLCData> historicalData = new List<PLCData>();  // D? li?u qu� kh?
+	private List<PLCDataDto> historicalData = new List<PLCDataDto>();
 	private DateTime? lastUpdateTime;
 
 	private PlotModel plotModel;
@@ -123,14 +117,13 @@
 			try
 			{
 				await plcService.StartLotAsync(id, inputLotNo);
-				lotNo = inputLotNo; // ? �?m b?o g�n gi� tr? v�o lotNo
-				inputLotNo = "";     // ? Clear input sau khi start
+				lotNo = inputLotNo;
+				inputLotNo = "";
 				isLotRunning = true;
-				startTime = DateTime.Now; // ? �?m b?o g�n gi� tr? v�o startTime
-										  //StartElapsedTimeTimer(); // B? timer, t�nh to�n tr?c ti?p
+				startTime = DateTime.Now;
 				snackbar.Add("Lot Started Successfully!", Severity.Success);
-				StateHasChanged(); // ? Quan tr?ng: G?i StateHasChanged d? c?p nh?t UI
-				Console.WriteLine($"? Start Lot v?i LotNo: {lotNo}, Start Time: {startTime}");
+				StateHasChanged();
+				Console.WriteLine($"Start Lot: LotNo={lotNo}, Start Time={startTime}");
 			}
 			catch (Exception ex)
 			{
@@ -149,8 +142,8 @@
 			inputLotNo = "";
 			isLotRunning = false;
 			snackbar.Add("Lot Finished Successfully!", Severity.Success);
-			StateHasChanged(); // G?i StateHasChanged() sau khi c?p nh?t tr?ng th�i
-			Console.WriteLine("? FinishLot th�nh c�ng. UI c?p nh?t.");
+			StateHasChanged();
+			Console.WriteLine("FinishLot success. UI updated.");
 		}
 		catch (Exception ex)
 		{
@@ -168,7 +161,7 @@
 
 		hubConnection.Closed += async (error) =>
 		{
-			Console.WriteLine("? SignalR disconnected. Reconnecting...");
+			Console.WriteLine("SignalR disconnected. Reconnecting...");
 			isConnected = false;
 			isLotRunning = false;
 			await InvokeAsync(StateHasChanged);
@@ -176,7 +169,7 @@
 
 		hubConnection.Reconnected += async (connectionId) =>
 		{
-			Console.WriteLine($"?? SignalR reconnected: {connectionId}");
+			Console.WriteLine($"SignalR reconnected: {connectionId}");
 			isConnected = true;
 
 			await hubConnection.SendAsync("JoinMachineGroup", id);
@@ -188,11 +181,11 @@
 		try
 		{
 			await hubConnection.StartAsync();
-			Console.WriteLine("? SignalR connected successfully.");
+			Console.WriteLine("SignalR connected successfully.");
 		}
 		catch (Exception ex)
 		{
-			Console.WriteLine($"? SignalR connection error: {ex.Message}");
+			Console.WriteLine($"SignalR connection error: {ex.Message}");
 			return;
 		}
 
@@ -208,14 +201,13 @@
 					plcValue4 = v4;
 					plcValue5 = v5;
 
-					// ?????? Ch? c?p nh?t lotNo n?u trang m?i load ho?c lotNo t? PLC kh�c null v� kh�c gi� tr? hi?n t?i
 					if (string.IsNullOrEmpty(this.lotNo) || (!string.IsNullOrEmpty(lotNo) && this.lotNo != lotNo))
 					{
 						this.lotNo = lotNo;
 						isLotRunning = !string.IsNullOrEmpty(lotNo);
 					}
 
-					Console.WriteLine($"?? Data: {lotNo}, {plcValue1}, {plcValue2}, {plcValue3}, {plcValue4}, {plcValue5}");
+					Console.WriteLine($"Data: {lotNo}, {plcValue1}, {plcValue2}, {plcValue3}, {plcValue4}, {plcValue5}");
 					ReceivePlcValueHandler(v1, v2, v3);
 					if (plcValue4 < 13740) running = "ON";
 					else running = "OFF";
@@ -233,7 +225,7 @@
 		}
 		else
 		{
-			Console.WriteLine("?? SignalR not connected, cannot send commands.");
+			Console.WriteLine("SignalR not connected, cannot send commands.");
 		}
 	}
 
@@ -245,26 +237,14 @@
 
 		await InitSignalR();
 		await InitializePlotModel();
-		await LoadHistoricalData(TimeSpan.FromHours(2)); // T?i d? li?u 2 ti?ng g?n nh?t
+		await LoadHistoricalData(TimeSpan.FromHours(2));
 
-		// Load Lot Start Time
-		lotNo = await plcService.GetCurrentLotNoAsync(id);
-
+		lotNo = await plcService.GetCurrentLotNoAsync(id) ?? "";
 
 		if (!string.IsNullOrEmpty(lotNo))
 		{
 			isLotRunning = true;
 			startTime = await plcService.GetLotStartTimeAsync(id);
-		}
-		//T?i l?i LotNo t? database khi trang t?i
-		try
-		{
-			lotNo = await plcService.GetCurrentLotNoAsync(id) ?? ""; // N?u null, g�n r?ng
-			isLotRunning = !string.IsNullOrEmpty(lotNo);
-		}
-		catch (Exception ex)
-		{
-			snackbar.Add($"Error loading Lot information: {ex.Message}", Severity.Error);
 		}
 	}
 
@@ -276,13 +256,11 @@
 			await hubConnection.DisposeAsync();
 		}
 	}
-	public void Dispose()  //Th�m phuong th?c Dispose()
+	public void Dispose()
 	{
-		// Gi?i ph�ng t�i nguy�n ? d�y (n?u c�)
-		// V� d?: Ng?t k?t n?i SignalR
 		if (hubConnection != null)
 		{
-			hubConnection.StopAsync().GetAwaiter().GetResult();  // Ch� �: �?ng b? d? don gi?n
+			hubConnection.StopAsync().GetAwaiter().GetResult();
 			hubConnection.DisposeAsync().GetAwaiter().GetResult();
 		}
 		Console.WriteLine($"Component {machineName} is being disposed.");
@@ -296,22 +274,22 @@
 		{
 			Position = AxisPosition.Bottom,
 			StringFormat = "HH:mm:ss",
-			IsZoomEnabled = true, // B?t zoom tr?c X
-			IsPanEnabled = true,   // B?t pan tr?c X
+			IsZoomEnabled = true,
+			IsPanEnabled = true,
 			MaximumPadding = 0.1,
 			MinimumPadding = 0.1,
-			MajorGridlineStyle = LineStyle.Solid, // Th�m du?ng grid d?c
-			MinorGridlineStyle = LineStyle.Dot,  // �u?ng grid ph?
+			MajorGridlineStyle = LineStyle.Solid,
+			MinorGridlineStyle = LineStyle.Dot,
 		});
 		plotModel.Axes.Add(new LinearAxis
 		{
 			Position = AxisPosition.Left,
-			IsZoomEnabled = true, // B?t zoom tr?c Y
-			IsPanEnabled = true,   // B?t pan tr?c Y
+			IsZoomEnabled = true,
+			IsPanEnabled = true,
 			MaximumPadding = 0.1,
 			MinimumPadding = 0.1,
-			MajorGridlineStyle = LineStyle.Solid, // Th�m du?ng grid d?c
-			MinorGridlineStyle = LineStyle.Dot,  // �u?ng grid ph?
+			MajorGridlineStyle = LineStyle.Solid,
+			MinorGridlineStyle = LineStyle.Dot,
 		});
 		plotModel.Series.Add(new LineSeries { Title = "Max" });
 		plotModel.Series.Add(new LineSeries { Title = "Min" });
@@ -320,7 +298,6 @@
 
 	private async Task LoadHistoricalData(TimeSpan timeSpan)
 	{
-		// G?i service c?a m�y d? l?y d? li?u PLC l?ch s? cho machineId
 		var historicalData = await plcService.GetHistoricalPlcDataAsync(id, timeSpan);
 
 		if (historicalData != null && historicalData.Any())
@@ -338,7 +315,6 @@
 				((LineSeries)plotModel.Series[1]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(dataPoint.Timestamp ?? DateTime.Now), dataPoint.Value2 ?? 0));
 				((LineSeries)plotModel.Series[2]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(dataPoint.Timestamp ?? DateTime.Now), dataPoint.Value3 ?? 0));
 			}
-			// Thi?t l?p ph?m vi hi?n th? ban d?u
 			((DateTimeAxis)plotModel.Axes[0]).Minimum = DateTimeAxis.ToDouble(startTime);
 			((DateTimeAxis)plotModel.Axes[0]).Maximum = DateTimeAxis.ToDouble(endTime);
 			plotModel.InvalidatePlot(true);
@@ -356,10 +332,9 @@
 			((LineSeries)plotModel.Series[1]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(DateTime.Now), value2));
 			((LineSeries)plotModel.Series[2]).Points.Add(new DataPoint(DateTimeAxis.ToDouble(DateTime.Now), value3));
 
-			// Gi?i h?n s? lu?ng di?m d? li?u d? gi? cho bi?u d? kh�ng qu� t?i
 			foreach (var series in plotModel.Series)
 			{
-				if (series is LineSeries lineSeries) // Ki?m tra v� �p ki?u sang LineSeries
+				if (series is LineSeries lineSeries)
 				{
 					while (lineSeries.Points.Count > MaxHistoricalPoints)
 					{
@@ -367,7 +342,6 @@
 					}
 				}
 			}
-			// T? d?ng di chuy?n tr?c X d? lu�n hi?n th? 2 ti?ng g?n nh?t
 			((DateTimeAxis)plotModel.Axes[0]).Minimum = DateTimeAxis.ToDouble(now - DisplayTimeSpan);
 			((DateTimeAxis)plotModel.Axes[0]).Maximum = DateTimeAxis.ToDouble(now);
 
@@ -381,12 +355,8 @@
 		if (startTime.HasValue)
 		{
 			TimeSpan elapsed = DateTime.Now - startTime.Value;
-			return $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}"; // �?nh d?ng bao g?m gi?
+			return $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
 		}
-		return "00:00:00"; // �?nh d?ng m?c d?nh
+		return "00:00:00";
 	}
-
-
-
-
 }

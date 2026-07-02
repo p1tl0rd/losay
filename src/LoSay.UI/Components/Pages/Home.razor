@@ -1,12 +1,9 @@
 @page "/"
-@using LoSay.Data.Model
-@using LoSay.Servies.Interfaces
 @inject IMachineService _machineService
 @inject IPLCService _plcService
 @inject NavigationManager NavManager
 @inject ISnackbar snackbar
 
- 
 
 
 <PageTitle>Machine Overview</PageTitle>
@@ -34,8 +31,8 @@
                         <MudText Typo="Typo.body2">
                             <b>Lot:</b> @GetLotNo(machine.Id)
                         </MudText>
-                       
-                        @if (!string.IsNullOrEmpty(machine.LotRun)) // Ki?m tra null ho?c r?ng
+
+                        @if (!string.IsNullOrEmpty(machine.LotRun))
                         {
                             <MudText Typo="Typo.body2">
                                 <b>Lot Run:</b> @machine.LotRun
@@ -50,7 +47,9 @@
                                 <b>Elapsed:</b> @GetElapsedTime(GetStartTime(machine.Id))
                             </MudText>
                             <MudText Typo="Typo.body2">
-                                <b>CH1: CH2: CH3:</b>
+                                <b>CH1:</b> @(machine.PLCDataDto?.Value1?.ToString("F1") ?? "-")
+                                <b>CH2:</b> @(machine.PLCDataDto?.Value2?.ToString("F1") ?? "-")
+                                <b>CH3:</b> @(machine.PLCDataDto?.Value3?.ToString("F1") ?? "-")
                             </MudText>
                         }
                     </MudCardContent>
@@ -86,7 +85,7 @@
 </style>
 
 @code {
-    List<MachineWithLotInfo> Machines = new List<MachineWithLotInfo>();
+    List<MachineWithLotInfoDto> Machines = new List<MachineWithLotInfoDto>();
     private Dictionary<int, string?> _lotNos = new Dictionary<int, string?>();
     private Dictionary<int, DateTime?> _startTimes = new Dictionary<int, DateTime?>();
 
@@ -97,7 +96,7 @@
     {
         try
         {
-            Machines = await _machineService.GetMachinesWithLotInfoAsync();
+            Machines = (await _machineService.GetMachinesWithLotInfoAsync()).ToList();
             foreach (var machine in Machines)
             {
                 _lotNos[machine.Id] = await _plcService.GetCurrentLotNoAsync(machine.Id);
@@ -168,14 +167,12 @@
         if (startTime.HasValue)
         {
             TimeSpan elapsed = DateTime.Now - startTime.Value;
-            return $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}"; // Ð?nh d?ng bao g?m gi?
+            return $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
         }
-        return "00:00:00"; // Ð?nh d?ng m?c d?nh
+        return "00:00:00";
     }
     private DateTime? GetStartTime(int machineId)
     {
         return _startTimes.ContainsKey(machineId) ? _startTimes[machineId] : null;
     }
-
-   
 }

@@ -1,5 +1,5 @@
 @using MudBlazor
-@inject LoSay.Servies.Interfaces.IMachineService MachineService
+@inject IMachineService MachineService
 @inject ISnackbar Snackbar
 @inject ILogger<MachineEditDialog> Logger
 @inject IDialogService DialogService
@@ -11,30 +11,30 @@
         <EditForm Model="Machine" OnValidSubmit="Save">
             <MudGrid Spacing="2">
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="Machine.MachineName" Label="T�n M�y" Required RequiredError="T�n m�y l� b?t bu?c" MaxLength="10" Variant="Variant.Outlined" />
+                    <MudTextField @bind-Value="Machine.MachineName" Label="Tên Máy" Required RequiredError="Tên máy là bắt buộc" MaxLength="10" Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="Machine.Address" Label="�?a Ch? PLC" MaxLength="20" Variant="Variant.Outlined" />
+                    <MudTextField @bind-Value="Machine.Address" Label="Địa Chỉ PLC" MaxLength="20" Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudCheckBox @bind-Value="Machine.Status" Color="Color.Success" Label="Tr?ng th�i ho?t d?ng"></MudCheckBox>
+                    <MudCheckBox @bind-Value="Machine.Status" Color="Color.Success" Label="Trạng thái hoạt động"></MudCheckBox>
                 </MudItem>
             </MudGrid>
             <DataAnnotationsValidator />
         </EditForm>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="Cancel">H?y</MudButton>
-        <MudButton Color="Color.Primary" OnClick="HandleSubmit" >Luu</MudButton>
+        <MudButton OnClick="Cancel">Hủy</MudButton>
+        <MudButton Color="Color.Primary" OnClick="HandleSubmit" >Lưu</MudButton>
     </DialogActions>
 </MudDialog>
 
 @code {
     [Parameter]
-    public Machine Machine { get; set; } = new();
+    public MachineDto Machine { get; set; } = new();
     [CascadingParameter]
     private IMudDialogInstance MudDialog { get; set; }
-    private string ButtonText => Machine.Id == 0 ? "Th�m" : "Luu";
+    private string ButtonText => Machine.Id == 0 ? "Thêm" : "Lưu";
     private bool isValid;
     private async Task Save()
     {
@@ -42,7 +42,7 @@
         {
             if (Machine.Id == 0)
             {
-                await MachineService.AddMachineAsync(Machine);
+                await MachineService.CreateMachineAsync(Machine);
             }
             else
             {
@@ -52,12 +52,12 @@
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "L?i luu m�y");
-            Snackbar.Add("L?i khi luu m�y", Severity.Error);
+            Logger.LogError(ex, "Lỗi lưu máy");
+            Snackbar.Add("Lỗi khi lưu máy", Severity.Error);
         }
     }
 
-    private async Task Cancel()
+    private void Cancel()
     {
         MudDialog.Close(DialogResult.Ok(true));
     }

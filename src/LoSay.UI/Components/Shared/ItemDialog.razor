@@ -1,7 +1,5 @@
-@using LoSay.Data.Entities
 @inject IItemService ItemService
 @inject IDialogService DialogService
-@using LoSay.Servies.Interfaces
 @using MudBlazor
 
 <MudDialog>
@@ -9,30 +7,30 @@
         <EditForm Model="Item" OnValidSubmit="Save">
             <MudGrid Spacing="2">
                 <MudItem xs="12">
-                    <MudTextField @bind-Value="Item.ItemCode" Label="Mã Item" Required RequiredError="Mã Item là b?t bu?c" MaxLength="50" Variant="Variant.Outlined" />
+                    <MudTextField @bind-Value="Item.ItemCode" Label="MÃ£ Item" Required RequiredError="MÃ£ Item lÃ  báº¯t buá»™c" MaxLength="50" Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12">
-                    <MudTextField @bind-Value="Item.ItemName" Label="Tên Item" Required RequiredError="Tên Item là b?t bu?c" MaxLength="50" Variant="Variant.Outlined" />
+                    <MudTextField @bind-Value="Item.ItemName" Label="TÃªn Item" Required RequiredError="TÃªn Item lÃ  báº¯t buá»™c" MaxLength="50" Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="Item.Max" Label="Max Value" Required RequiredError="Max Value là b?t bu?c" Variant="Variant.Outlined" InputType="InputType.Number" />
+                    <MudTextField @bind-Value="Item.Max" Label="Max Value" Required RequiredError="Max Value lÃ  báº¯t buá»™c" Variant="Variant.Outlined" InputType="InputType.Number" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="Item.Min" Label="Min Value" Required RequiredError="Min Value là b?t bu?c" Variant="Variant.Outlined" InputType="InputType.Number" />
+                    <MudTextField @bind-Value="Item.Min" Label="Min Value" Required RequiredError="Min Value lÃ  báº¯t buá»™c" Variant="Variant.Outlined" InputType="InputType.Number" />
                 </MudItem>
                 <MudItem xs="12">
-                    <MudTextField @bind-Value="Item.TimeSamping" Label="Time Sampling (giây)" Required RequiredError="Time Sampling là b?t bu?c" Variant="Variant.Outlined" InputType="InputType.Number" />
+                    <MudTextField @bind-Value="Item.TimeSamping" Label="Time Sampling (giÃ¢y)" Required RequiredError="Time Sampling lÃ  báº¯t buá»™c" Variant="Variant.Outlined" InputType="InputType.Number" />
                 </MudItem>
                 <MudItem xs="12">
-                    <MudCheckBox @bind-Checked="Item.Status" T="bool?" Label="Tr?ng thái ho?t d?ng" Color="Color.Primary" />
+                    <MudCheckBox @bind-Checked="Item.Status" T="bool" Label="Tráº¡ng thÃ¡i hoáº¡t Ä‘á»™ng" Color="Color.Primary" />
                 </MudItem>
             </MudGrid>
             <DataAnnotationsValidator />
         </EditForm>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="Cancel">H?y</MudButton>
-        <MudButton Color="Color.Primary" OnClick="HandleSubmit">Luu</MudButton>
+        <MudButton OnClick="Cancel">Há»§y</MudButton>
+        <MudButton Color="Color.Primary" OnClick="HandleSubmit">LÆ°u</MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -41,13 +39,13 @@
     private IMudDialogInstance MudDialog { get; set; }
 
     [Parameter]
-    public Item Item { get; set; } = new Item();
+    public ItemDto Item { get; set; } = new ItemDto();
 
     private async Task Save()
     {
         if (Item.Id == 0)
         {
-            await ItemService.AddItemAsync(Item);
+            await ItemService.CreateItemAsync(Item);
         }
         else
         {
@@ -63,7 +61,6 @@
 
     private async Task HandleSubmit()
     {
-        // MudForm không có Validate() khi dùng EditForm, ValidationMessage s? t? hi?n th?
         await Save();
     }
 }
