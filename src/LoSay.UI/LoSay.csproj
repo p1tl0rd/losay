@@ -11,12 +11,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Servies\PLCReaderNmodbus4.cs" />
-    <Compile Remove="Servies\PLCReaderWithNmodbus.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\LoSay.Domain\LoSay.Domain.csproj" />
+    <ProjectReference Include="..\LoSay.Application\LoSay.Application.csproj" />
+    <ProjectReference Include="..\LoSay.Infrastructure\LoSay.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
